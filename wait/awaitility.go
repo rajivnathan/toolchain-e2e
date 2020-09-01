@@ -1,6 +1,7 @@
 package wait
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -331,11 +332,64 @@ func (a *SingleAwaitility) SetupRouteForService(service corev1.Service, endpoint
 	return a.WaitForRouteToBeAvailable(route.Namespace, route.Name, endpoint)
 }
 
+func (a *SingleAwaitility) GetPrometheusRoute() (routev1.Route, error) {
+	ns := "openshift-monitoring"
+	name := "prometheus-k8s"
+	endpoint := "/api/v1/query?query=up"
+
+	// get the prometheus service
+	// var prometheusSvc *corev1.Service
+	// prometheusSvc = &corev1.Service{}
+	// // retrieve the metrics service from the namespace
+	// err := a.Client.Get(context.TODO(),
+	// 	types.NamespacedName{
+	// 		Namespace: ns,
+	// 		Name:      name,
+	// 	},
+	// 	prometheusSvc)
+	// if err != nil {
+	// 	return routev1.Route{}, fmt.Errorf("prometheus service not found")
+	// }
+
+	// a.T.Logf("found service '%s'", prometheusSvc.Name)
+
+	// now, create the route for the service (if needed)
+	route := routev1.Route{}
+	if err := a.Client.Get(context.TODO(), types.NamespacedName{
+		Namespace: ns,
+		Name:      name,
+	}, &route); err != nil {
+		// require.True(a.T, errors.IsNotFound(err), "failed to get route to access the '%s' service", name)
+		// route = routev1.Route{
+		// 	ObjectMeta: metav1.ObjectMeta{
+		// 		Namespace: ns,
+		// 		Name:      customName,
+		// 	},
+		// 	Spec: routev1.RouteSpec{
+		// 		Port: &routev1.RoutePort{
+		// 			TargetPort: intstr.FromString("web"),
+		// 		},
+		// 		TLS: &routev1.TLSConfig{
+		// 			Termination: routev1.TLSTerminationEdge,
+		// 		},
+		// 		To: routev1.RouteTargetReference{
+		// 			Kind: prometheusSvc.Kind,
+		// 			Name: prometheusSvc.Name,
+		// 		},
+		// 	},
+		// }
+		// if err = a.Client.Create(context.TODO(), &route, &test.CleanupOptions{}); err != nil {
+		// 	return route, err
+		// }
+	}
+	return a.WaitForRouteToBeAvailable(route.Namespace, route.Name, endpoint)
+}
+
 // WaitForRouteToBeAvailable wais until the given route is available, ie, it has an Ingress with a host configured
 // and the endpoint is reachable (with a `200 OK` status response)
 func (a *SingleAwaitility) WaitForRouteToBeAvailable(ns, name, endpoint string) (routev1.Route, error) {
 	route := routev1.Route{}
-	// retrieve the route for the registration service
+	// retrieve the route with the given name in the given namespace
 	err := wait.Poll(a.RetryInterval, a.Timeout, func() (done bool, err error) {
 		if err = a.Client.Get(context.TODO(),
 			types.NamespacedName{
@@ -344,6 +398,7 @@ func (a *SingleAwaitility) WaitForRouteToBeAvailable(ns, name, endpoint string) 
 			}, &route); err != nil {
 			if errors.IsNotFound(err) {
 				a.T.Logf("Waiting for creation of route '%s' in namespace '%s'...\n", name, ns)
+				fmt.Printf("Waiting for creation of route '%s' in namespace '%s'...\n", name, ns)
 				return false, nil
 			}
 			return false, err
@@ -351,25 +406,44 @@ func (a *SingleAwaitility) WaitForRouteToBeAvailable(ns, name, endpoint string) 
 		// assume there's a single Ingress and that its host will not be empty when the route is ready
 		if len(route.Status.Ingress) == 0 || route.Status.Ingress[0].Host == "" {
 			a.T.Logf("Waiting for availability of route '%s' in namespace '%s'...\n", name, ns)
+			fmt.Printf("Waiting for availability of route '%s' in namespace '%s'...\n", name, ns)
 			return false, nil
 		}
+
 		// verify that the endpoint gives a `200 OK` response on a GET request
-		var location string
+		// var location string
+		var req *http.Request
 		client := http.Client{
 			Timeout: time.Duration(1 * time.Second),
 		}
 		if route.Spec.TLS != nil {
-			location = "https://" + route.Status.Ingress[0].Host + endpoint
+			location := "https://" + route.Status.Ingress[0].Host + endpoint
+			fmt.Printf("using https and location '%s'\n", location)
+			req, err = http.NewRequest("GET", location, nil)
+			if err != nil {
+				return false, err
+			}
 			client.Transport = &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			}
 		} else {
-			location = "http://" + route.Status.Ingress[0].Host + endpoint
+			location := "http://" + route.Status.Ingress[0].Host + endpoint
+			fmt.Printf("using http and location '%s'\n", location)
+			req, err = http.NewRequest("GET", location, nil)
+			if err != nil {
+				return false, err
+			}
 		}
-		resp, err := client.Get(location)
+
+		f := framework.Global
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", f.KubeConfig.BearerToken))
+		fmt.Printf("Token: %s\n", f.KubeConfig.BearerToken)
+		resp, err := client.Do(req)
+		// resp, err := client.Get(location)
 		if err, ok := err.(*url.Error); ok && err.Timeout() {
 			// keep waiting if there was a timeout: the endpoint is not available yet (pod is still re-starting)
 			a.T.Logf("Waiting for availability of route '%s' in namespace '%s' (endpoint timeout)...\n", name, ns)
+			fmt.Printf("Waiting for availability of route '%s' in namespace '%s' (endpoint timeout)...\n", name, ns)
 			return false, nil
 		} else if err != nil {
 			return false, err
@@ -377,6 +451,21 @@ func (a *SingleAwaitility) WaitForRouteToBeAvailable(ns, name, endpoint string) 
 		defer func() {
 			_ = resp.Body.Close()
 		}()
+		// return resp.StatusCode == http.StatusOK, nil
+
+		if resp.StatusCode != http.StatusOK {
+			buf := new(bytes.Buffer)
+			buf.ReadFrom(resp.Body)
+			responseBody := buf.String()
+			fmt.Printf("endpoint: %s, Response: %+v, response body: %+v\n", endpoint, resp, responseBody)
+		}
+
+		// var statusErr error = nil
+		// ok := resp.StatusCode == http.StatusOK
+		// if !ok {
+		// 	statusErr = fmt.Errorf("respone status: %s, response body: %+v", resp.Status, responseBody)
+		// }
+		// return ok, statusErr
 		return resp.StatusCode == http.StatusOK, nil
 	})
 	return route, err
