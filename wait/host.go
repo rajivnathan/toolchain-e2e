@@ -565,3 +565,23 @@ func (a *HostAwaitility) WaitForToolchainStatus(criteria ...ToolchainStatusWaitC
 	})
 	return err
 }
+
+// WaitUntilAllMasterUserRecordsDeleted waits until there are no more MasterUserRecords available in the namespace
+func (a *HostAwaitility) WaitUntilAllMasterUserRecordsDeleted() error {
+	err := wait.Poll(a.RetryInterval, a.Timeout, func() (done bool, err error) {
+		murList := &toolchainv1alpha1.MasterUserRecordList{}
+
+		if err = a.Client.List(context.TODO(), murList, client.Limit(1)); err != nil {
+			return false, err
+		}
+
+		if len(murList.Items) > 0 {
+			return false, nil
+		}
+		a.T.Logf("there are no more MasterUserRecords")
+		fmt.Printf("there are no more MasterUserRecords\n")
+		return true, nil
+	})
+
+	return err
+}
