@@ -98,9 +98,7 @@ func TestPerformance(t *testing.T) {
 
 		prometheusNS := "openshift-monitoring"
 		prometheusName := "prometheus-k8s"
-		// prometheusReadyEndpoint := "/api/v1/query?query=up"
 
-		// prometheusRoute, err := hostAwait.WaitForRouteToBeAvailable(prometheusNS, prometheusName, prometheusReadyEndpoint)
 		prometheusRoute := routev1.Route{}
 		if err := hostAwait.Client.Get(context.TODO(), types.NamespacedName{
 			Namespace: prometheusNS,
@@ -122,11 +120,9 @@ func TestPerformance(t *testing.T) {
 		fmt.Printf("===========================CPU Utilisation==============================\n")
 		cpuAvgQuery := fmt.Sprintf(`1-avg(rate(node_cpu_seconds_total{mode="idle"}[%ds]))`, testDurationSeconds)
 		cpuAvgResult := PrometheusQuery(t, prometheusRoute.Status.Ingress[0].Host, cpuAvgQuery)
-		// fmt.Printf("Average CPU Utilisation: %s\n", cpuAvgResult)
 
 		cpuMaxQuery := fmt.Sprintf(`1-min(rate(node_cpu_seconds_total{mode="idle"}[%ds]))`, testDurationSeconds)
 		cpuMaxResult := PrometheusQuery(t, prometheusRoute.Status.Ingress[0].Host, cpuMaxQuery)
-		// fmt.Printf("Max CPU Utilisation: %s\n", cpuMaxResult)
 
 		cpuMinQuery := fmt.Sprintf(`1-max(rate(node_cpu_seconds_total{mode="idle"}[%ds]))`, testDurationSeconds)
 		cpuMinResult := PrometheusQuery(t, prometheusRoute.Status.Ingress[0].Host, cpuMinQuery)
@@ -135,23 +131,15 @@ func TestPerformance(t *testing.T) {
 		fmt.Printf("=========================Memory Utilisation============================\n")
 
 		memoryAvgQuery := fmt.Sprintf(`1-avg_over_time(:node_memory_MemAvailable_bytes:sum[%ds])/sum(kube_node_status_allocatable_memory_bytes)`, testDurationSeconds)
-		// memoryQuery := `1-sum(:node_memory_MemAvailable_bytes:sum)/sum(kube_node_status_allocatable_memory_bytes)`
 		memoryAvgResult := PrometheusQuery(t, prometheusRoute.Status.Ingress[0].Host, memoryAvgQuery)
-		// fmt.Printf("Average Memory Utilisation: %s\n", memoryAvgResult)
 
 		memoryMaxQuery := fmt.Sprintf(`1-min_over_time(:node_memory_MemAvailable_bytes:sum[%ds])/sum(kube_node_status_allocatable_memory_bytes)`, testDurationSeconds)
-		// memoryQuery := `1-sum(:node_memory_MemAvailable_bytes:sum)/sum(kube_node_status_allocatable_memory_bytes)`
 		memoryMaxResult := PrometheusQuery(t, prometheusRoute.Status.Ingress[0].Host, memoryMaxQuery)
-		// fmt.Printf("Average Memory Utilisation: %s\n", memoryMaxResult)
 
 		memoryMinQuery := fmt.Sprintf(`1-max_over_time(:node_memory_MemAvailable_bytes:sum[%ds])/sum(kube_node_status_allocatable_memory_bytes)`, testDurationSeconds)
-		// memoryQuery := `1-sum(:node_memory_MemAvailable_bytes:sum)/sum(kube_node_status_allocatable_memory_bytes)`
 		memoryMinResult := PrometheusQuery(t, prometheusRoute.Status.Ingress[0].Host, memoryMinQuery)
-		// fmt.Printf("Average Memory Utilisation: %s\n", memoryMinResult)
 
 		fmt.Printf("Max: %s\nAvg: %s\nMin: %s\n", memoryMaxResult, memoryAvgResult, memoryMinResult)
-		// prometheusClient.QueryRange(t, `1-avg(rate(node_cpu_seconds_total{mode="idle"}`, start, end)
-		// logger.Info("CPU utilisation: %s", )
 	})
 
 }
