@@ -2,6 +2,7 @@ package testsupport
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net/http"
@@ -10,46 +11,56 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/codeready-toolchain/toolchain-e2e/wait"
+	"k8s.io/apimachinery/pkg/types"
+
+	routev1 "github.com/openshift/api/route/v1"
 	framework "github.com/operator-framework/operator-sdk/pkg/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func PrometheusQuery(t *testing.T, host, query string) string {
-	var req *http.Request
+const (
+	monitoringNS       = "openshift-monitoring"
+	clusterMetricsName = "prometheus-k8s"
+)
 
+func GetClusterMetricsRoute(t *testing.T, hostAwait *HostAwaitility) (routev1.Route, error) {
+	clusterMetricsRoute := routev1.Route{}
+	err := hostAwait.Client.Get(context.TODO(), types.NamespacedName{
+		Namespace: monitoringNS,
+		Name:      clusterMetricsName,
+	}, &clusterMetricsRoute)
+	return clusterMetricsRoute, err
+}
+
+func ClusterMetricsQuery(t *testing.T, host, query string) string {
+	var req *http.Request
 	client := http.Client{
 		Timeout: time.Duration(1 * time.Second),
 	}
 
 	escapedQuery := url.QueryEscape(query)
-	// startParam := formatTime(start)
-	// endParam := formatTime(end)
-	// step := strconv.FormatFloat(1.0, 'f', -1, 64)
-
 	promQueryURL := fmt.Sprintf("https://%s/api/v1/query?query=%s", host, escapedQuery)
-	// promQueryURL := fmt.Sprintf("https://%s/api/v1/query_range?query=%s&start=%s&end=%s&step=%s", host, escapedQuery, startParam, endParam, step)
 
-	fmt.Printf("prometheus query: '%s'\n", promQueryURL)
+	fmt.Printf("cluster metrics query: '%s'\n", promQueryURL)
 	req, err := http.NewRequest("GET", promQueryURL, nil)
-	assert.NoError(t, err, "prometheus request failed")
+	assert.NoError(t, err, "cluster metrics request failed")
 	client.Transport = &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 
 	f := framework.Global
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", f.KubeConfig.BearerToken))
-	// fmt.Printf("Token: %s\n", f.KubeConfig.BearerToken)
 	resp, err := client.Do(req)
-	require.NoError(t, err, "Error querying prometheus")
+	require.NoError(t, err, "Error querying cluster metrics")
 	if err != nil {
-		return "Error querying prometheus"
+		return "Error querying cluster metrics"
 	}
 
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(resp.Body)
 	responseBody := buf.String()
-	// fmt.Printf("Response: %+v, response body: %+v\n", resp, responseBody)
 
 	return responseBody
 }
