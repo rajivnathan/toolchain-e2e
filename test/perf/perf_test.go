@@ -10,6 +10,7 @@ import (
 	"time"
 
 	toolchainv1alpha1 "github.com/codeready-toolchain/api/pkg/apis/toolchain/v1alpha1"
+	"github.com/codeready-toolchain/toolchain-common/pkg/test"
 	. "github.com/codeready-toolchain/toolchain-e2e/testsupport"
 	. "github.com/codeready-toolchain/toolchain-e2e/wait"
 	"github.com/go-logr/logr"
@@ -46,27 +47,12 @@ func TestPerformance(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		// when deleting the host-operator pod to emulate an operator restart during redeployment.
-		err := hostAwait.DeletePods(client.MatchingLabels{"name": "host-operator"})
+		// update nstemplatetier deactivation timeout to trigger user deactivation after operator pod restarts
+		// err := updateDeactivationTimeoutForTierTo(t, hostAwait, 1)
+		// require.NoError(t, err, "error updating deactivation timeout for nstemplatetier")
 
-		// then check how much time it takes to restart and process all existing resources
-		require.NoError(t, err)
-
-		host := hostAwait
-		host.Timeout = 30 * time.Minute
-		// host metrics should become available again at this point
-		metricsRoute, err := hostAwait.SetupRouteForService(metricsService, "/metrics")
-		require.NoError(t, err, "failed while setting up or waiting for the route to the 'host-operator-metrics' service to be available")
-
-		metricsStart := time.Now()
-		// measure time it takes to have an empty queue on the master-user-records
-		err = host.WaitUntilMetricsCounterHasValue(metricsRoute.Status.Ingress[0].Host, "controller_runtime_reconcile_total", "controller", "usersignup-controller", float64(count))
-		assert.NoError(t, err, "failed to reach the expected number of reconcile loops")
-		err = host.WaitUntilMetricsCounterHasValue(metricsRoute.Status.Ingress[0].Host, "workqueue_depth", "name", "usersignup-controller", 0)
-		assert.NoError(t, err, "failed to reach the expected queue depth")
-		processedAllMurs := time.Now()
-		logger.Info("done processing resources", "provisioned_users_count", count, "usersignup_processing_duration_ms", processedAllMurs.Sub(metricsStart).Milliseconds())
-		fmt.Printf("usersignup_processing_duration_ms: %d", processedAllMurs.Sub(metricsStart).Milliseconds())
+		// // reset deactivation timeout when test is complete
+		// defer updateDeactivationTimeoutForTierTo(t, hostAwait, 0)
 
 		// trigger user deactivation
 		configMap := &v1.ConfigMap{
@@ -80,6 +66,28 @@ func TestPerformance(t *testing.T) {
 		}
 		err = hostAwait.FrameworkClient.Create(context.TODO(), configMap, CleanupOptions(ctx))
 		require.NoError(t, err)
+
+		// when deleting the host-operator pod to emulate an operator restart during redeployment.
+		err = hostAwait.DeletePods(client.MatchingLabels{"name": "host-operator"})
+
+		// then check how much time it takes to restart and process all existing resources
+		require.NoError(t, err)
+
+		host := hostAwait
+		host.Timeout = 30 * time.Minute
+		// host metrics should become available again at this point
+		metricsRoute, err := hostAwait.SetupRouteForService(metricsService, "/metrics")
+		require.NoError(t, err, "failed while setting up or waiting for the route to the 'host-operator-metrics' service to be available")
+
+		metricsStart := time.Now()
+		// measure time it takes to have an empty queue on the master-user-records
+		// err = host.WaitUntilMetricsCounterHasValue(metricsRoute.Status.Ingress[0].Host, "controller_runtime_reconcile_total", "controller", "usersignup-controller", float64(count))
+		// assert.NoError(t, err, "failed to reach the expected number of reconcile loops")
+		err = host.WaitUntilMetricsCounterHasValue(metricsRoute.Status.Ingress[0].Host, "workqueue_depth", "name", "usersignup-controller", 0)
+		assert.NoError(t, err, "failed to reach the expected queue depth")
+		processedAllMurs := time.Now()
+		logger.Info("done processing resources", "provisioned_users_count", count, "usersignup_processing_duration_ms", processedAllMurs.Sub(metricsStart).Milliseconds())
+		fmt.Printf("usersignup_processing_duration_ms: %d\n", processedAllMurs.Sub(metricsStart).Milliseconds())
 
 		fmt.Printf("Deactivation triggered\n")
 		deactivationStart := time.Now()
@@ -102,10 +110,14 @@ func TestPerformance(t *testing.T) {
 			return
 		}
 
+		deactivationTotalReconciles, err := GetCounter(metricsRoute.Status.Ingress[0].Host, "controller_runtime_reconcile_total", "controller", "deactivation-controller")
+		require.NoError(t, err, "failed to get the total number of reconciles for the deactivation controller")
+
 		testDuration := deactivationEnd.Sub(testStart)
 		testDurationSeconds := int(testDuration.Seconds())
 		fmt.Printf("========================================================================\n")
 		fmt.Printf("Deactivation duration: %ds\n", int(deactivationEnd.Sub(deactivationStart).Seconds()))
+		fmt.Printf("Deactivation total reconciles: %fs\n", deactivationTotalReconciles)
 		fmt.Printf("Total duration: %ds\n", testDurationSeconds)
 		fmt.Printf("===========================CPU Utilisation==============================\n")
 		cpuAvgQuery := fmt.Sprintf(`1-avg(rate(node_cpu_seconds_total{mode="idle"}[%ds]))`, testDurationSeconds)
@@ -173,4 +185,16 @@ func initLogger() (logr.Logger, *os.File, error) {
 	logger := zap.New(zap.WriteTo(out))
 	fmt.Printf("configured logger to write messages in '%s'\n", out.Name())
 	return logger, out, nil
+}
+
+func updateDeactivationTimeoutForTierTo(t test.T, hostAwait *HostAwaitility, timeout int) error {
+	basicTier := &toolchainv1alpha1.NSTemplateTier{}
+	err := hostAwait.FrameworkClient.Get(context.TODO(), types.NamespacedName{Name: "basic", Namespace: hostAwait.Namespace}, basicTier)
+	if err != nil {
+		return err
+	}
+	basicTier.Spec.DeactivationTimeoutDays = timeout
+
+	err = hostAwait.FrameworkClient.Update(context.TODO(), basicTier)
+	return err
 }

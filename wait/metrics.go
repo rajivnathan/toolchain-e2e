@@ -11,7 +11,9 @@ import (
 	"github.com/prometheus/common/expfmt"
 )
 
-func getCounter(url string, family string, labelKey string, labelValue string) (float64, error) {
+// GetCounter gets the value of the exposed metric counter with the given family
+// and with the given label key/value
+func GetCounter(url string, family string, labelKey string, labelValue string) (float64, error) {
 	client := http.Client{
 		Timeout: time.Duration(1 * time.Second),
 		Transport: &http.Transport{

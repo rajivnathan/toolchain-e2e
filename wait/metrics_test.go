@@ -39,7 +39,7 @@ workqueue_depth{name="masteruserrecord-controller"} 0
 	defer ts.Close()
 
 	// when
-	result, err := getCounter(ts.URL, "workqueue_depth", "name", "masteruserrecord-controller")
+	result, err := GetCounter(ts.URL, "workqueue_depth", "name", "masteruserrecord-controller")
 	// then
 	require.NoError(t, err)
 	assert.Equal(t, float64(0), result)

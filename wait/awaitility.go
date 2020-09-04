@@ -281,11 +281,11 @@ func (a *Awaitility) WaitForRouteToBeAvailable(ns, name, endpoint string) (route
 	return route, err
 }
 
-// WaitUntilMetricsCounterHasValue waits until the exposed metric counter with of the given family
+// WaitUntilMetricsCounterHasValue waits until the exposed metric counter with the given family
 // and with the given label key/value has reached the expected value
 func (a *Awaitility) WaitUntilMetricsCounterHasValue(url string, family string, labelKey string, labelValue string, expectedValue float64) error {
 	err := wait.Poll(a.RetryInterval, a.Timeout, func() (done bool, err error) {
-		value, err := getCounter(url, family, labelKey, labelValue)
+		value, err := GetCounter(url, family, labelKey, labelValue)
 		if err != nil {
 			a.T.Logf("Waiting for counter '%s{%s:%s}' to reach '%v' but error occurred: %s", family, labelKey, labelValue, expectedValue, err.Error())
 			return false, nil
