@@ -34,7 +34,7 @@ func TestPerformance(t *testing.T) {
 	metricsService, err := hostAwait.WaitForMetricsService("host-operator-metrics")
 	require.NoError(t, err, "failed while waiting for the 'host-operator-metrics' service")
 
-	count := 1000
+	count := 10
 	t.Run(fmt.Sprintf("%d users", count), func(t *testing.T) {
 		testStart := time.Now()
 		// given
@@ -94,10 +94,14 @@ func TestPerformance(t *testing.T) {
 
 		testDuration := deactivationEnd.Sub(testStart)
 		testDurationSeconds := int(testDuration.Seconds())
+
+		deactivationDuration := deactivationEnd.Sub(deactivationStart)
+		deactivationDurationSeconds := int(deactivationDuration.Seconds())
+
 		fmt.Printf("========================================================================\n")
 		fmt.Printf("Deactivation duration: %ds\n", int(deactivationEnd.Sub(deactivationStart).Seconds()))
 		fmt.Printf("Total duration: %ds\n", testDurationSeconds)
-		fmt.Printf("===========================CPU Utilisation==============================\n")
+		fmt.Printf("===========================Overall CPU Utilisation==============================\n")
 		cpuAvgQuery := fmt.Sprintf(`1-avg(rate(node_cpu_seconds_total{mode="idle"}[%ds]))`, testDurationSeconds)
 		cpuAvgResult := ClusterMetricsQuery(t, clusterMetricsRoute.Status.Ingress[0].Host, cpuAvgQuery)
 
@@ -108,7 +112,18 @@ func TestPerformance(t *testing.T) {
 		cpuMinResult := ClusterMetricsQuery(t, clusterMetricsRoute.Status.Ingress[0].Host, cpuMinQuery)
 		fmt.Printf("Max: %s\nAvg: %s\nMin: %s\n", cpuMaxResult, cpuAvgResult, cpuMinResult)
 
-		fmt.Printf("=========================Memory Utilisation============================\n")
+		fmt.Printf("===========================Deactivation CPU Utilisation==============================\n")
+		cpuAvgQueryDeactivation := fmt.Sprintf(`1-avg(rate(node_cpu_seconds_total{mode="idle"}[%ds]))`, deactivationDurationSeconds)
+		cpuAvgResultDeactivation := ClusterMetricsQuery(t, clusterMetricsRoute.Status.Ingress[0].Host, cpuAvgQueryDeactivation)
+
+		cpuMaxQueryDeactivation := fmt.Sprintf(`1-min(rate(node_cpu_seconds_total{mode="idle"}[%ds]))`, deactivationDurationSeconds)
+		cpuMaxResultDuration := ClusterMetricsQuery(t, clusterMetricsRoute.Status.Ingress[0].Host, cpuMaxQueryDeactivation)
+
+		cpuMinQueryDuration := fmt.Sprintf(`1-max(rate(node_cpu_seconds_total{mode="idle"}[%ds]))`, deactivationDurationSeconds)
+		cpuMinResultDuration := ClusterMetricsQuery(t, clusterMetricsRoute.Status.Ingress[0].Host, cpuMinQueryDuration)
+		fmt.Printf("Max: %s\nAvg: %s\nMin: %s\n", cpuMaxResultDuration, cpuAvgResultDeactivation, cpuMinResultDuration)
+
+		fmt.Printf("=========================Overall Memory Utilisation============================\n")
 
 		memoryAvgQuery := fmt.Sprintf(`1-avg_over_time(:node_memory_MemAvailable_bytes:sum[%ds])/sum(kube_node_status_allocatable_memory_bytes)`, testDurationSeconds)
 		memoryAvgResult := ClusterMetricsQuery(t, clusterMetricsRoute.Status.Ingress[0].Host, memoryAvgQuery)
@@ -120,6 +135,19 @@ func TestPerformance(t *testing.T) {
 		memoryMinResult := ClusterMetricsQuery(t, clusterMetricsRoute.Status.Ingress[0].Host, memoryMinQuery)
 
 		fmt.Printf("Max: %s\nAvg: %s\nMin: %s\n", memoryMaxResult, memoryAvgResult, memoryMinResult)
+
+		fmt.Printf("=========================Deactivation Memory Utilisation============================\n")
+
+		memoryAvgQueryDeactivation := fmt.Sprintf(`1-avg_over_time(:node_memory_MemAvailable_bytes:sum[%ds])/sum(kube_node_status_allocatable_memory_bytes)`, deactivationDurationSeconds)
+		memoryAvgResultDeactivation := ClusterMetricsQuery(t, clusterMetricsRoute.Status.Ingress[0].Host, memoryAvgQueryDeactivation)
+
+		memoryMaxQueryDeactivation := fmt.Sprintf(`1-min_over_time(:node_memory_MemAvailable_bytes:sum[%ds])/sum(kube_node_status_allocatable_memory_bytes)`, deactivationDurationSeconds)
+		memoryMaxResultDeactivation := ClusterMetricsQuery(t, clusterMetricsRoute.Status.Ingress[0].Host, memoryMaxQueryDeactivation)
+
+		memoryMinQueryDeactivation := fmt.Sprintf(`1-max_over_time(:node_memory_MemAvailable_bytes:sum[%ds])/sum(kube_node_status_allocatable_memory_bytes)`, deactivationDurationSeconds)
+		memoryMinResultDeactivation := ClusterMetricsQuery(t, clusterMetricsRoute.Status.Ingress[0].Host, memoryMinQueryDeactivation)
+
+		fmt.Printf("Max: %s\nAvg: %s\nMin: %s\n", memoryMaxResultDeactivation, memoryAvgResultDeactivation, memoryMinResultDeactivation)
 	})
 
 }
