@@ -46,7 +46,7 @@ func GetCounter(url string, family string, labelKey string, labelValue string) (
 		if f.GetName() == family {
 			for _, m := range f.GetMetric() {
 				for _, l := range m.GetLabel() {
-					// fmt.Printf("family_name: '%s' / label_name: '%s' / label_value: '%s'\n", name, l.GetName(), l.GetValue())
+					fmt.Printf("family_name: '%s' / label_name: '%s' / label_value: '%s'\n", f.GetName(), l.GetName(), l.GetValue())
 					if l.GetName() == labelKey && l.GetValue() == labelValue {
 						return m.GetCounter().GetValue(), nil
 					}

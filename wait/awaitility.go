@@ -3,6 +3,7 @@ package wait
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
@@ -290,10 +291,11 @@ func (a *Awaitility) WaitUntilMetricsCounterHasValue(url string, family string, 
 			a.T.Logf("Waiting for counter '%s{%s:%s}' to reach '%v' but error occurred: %s", family, labelKey, labelValue, expectedValue, err.Error())
 			return false, nil
 		}
-		if value != expectedValue {
+		if value < expectedValue {
 			a.T.Logf("Waiting for counter '%s{%s:%s}' to reach '%v' (currently: %v)", family, labelKey, labelValue, expectedValue, value)
 			return false, nil
 		}
+		fmt.Printf("Value hit the required level! %f\n", value)
 		return true, nil
 	})
 	return err
