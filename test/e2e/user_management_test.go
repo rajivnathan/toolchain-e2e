@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -66,6 +67,26 @@ func (s *userManagementTestSuite) TestUserDeactivation() {
 		s.T().Logf("user signup '%s' reactivated", userSignup.Name)
 
 		_, err = s.hostAwait.WaitForMasterUserRecord(mur.Name)
+		require.NoError(s.T(), err)
+	})
+
+	s.T().Run("check that auto deactivation deactivates a user", func(t *testing.T) {
+
+		err := s.hostAwait.Client.Get(context.TODO(), types.NamespacedName{
+			Namespace: mur.Namespace,
+			Name:      mur.Name,
+		}, mur)
+		require.NoError(s.T(), err)
+
+		// change the provisioned time to a time far enough in the past
+		// to trigger auto deactivation (the basic tier deactivation period)
+		basicTierDeactivationPeriod := 30 * 24 * time.Hour
+		mur.Status.ProvisionedTime = &metav1.Time{Time: time.Now().Add(-basicTierDeactivationPeriod)}
+		err = s.hostAwait.Client.Status().Update(context.TODO(), mur)
+		require.NoError(s.T(), err)
+		s.T().Logf("masteruserrecord '%s' provisioned time adjusted", mur.Name)
+
+		err = s.hostAwait.WaitUntilMasterUserRecordDeleted(mur.Name)
 		require.NoError(s.T(), err)
 	})
 }
