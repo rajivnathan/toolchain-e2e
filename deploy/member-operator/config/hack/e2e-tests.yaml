@@ -1,0 +1,15 @@
+apiVersion: toolchain.dev.openshift.com/v1alpha1
+kind: MemberOperatorConfig
+metadata:
+  name: config
+spec:
+  autoscaler:
+    deploy: true
+    bufferMemory: "50Mi"
+    bufferReplicas: 2
+  memberStatus:
+    refreshPeriod: "1s"
+  toolchainCluster:
+    healthCheckPeriod: "5s"        
+  webhook:
+    deploy: false

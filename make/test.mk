@@ -232,6 +232,11 @@ deploy-member:
 	-oc new-project $(MEMBER_NS_TO_DEPLOY) 1>/dev/null
 	-oc label ns $(MEMBER_NS_TO_DEPLOY) app=member-operator
 	-oc project $(MEMBER_NS_TO_DEPLOY)
+	# temporary workaround until webhook deployment is handled by memberoperatorconfig controller: create a memberoperatorconfig to prevent webhook deploy for 2nd member
+	if [[ ${MEMBER_NS_TO_DEPLOY} == $(MEMBER_NS_2) ]]; then \
+		oc apply -f ${MEMBER_REPO_PATH}/deploy/crds/toolchain.dev.openshift.com_memberoperatorconfigs.yaml; \
+		oc apply -f deploy/member-operator/config/hack/${ENVIRONMENT}.yaml -n $(MEMBER_NS_TO_DEPLOY); \
+	fi;
 	$(MAKE) deploy-operator E2E_REPO_PATH=${MEMBER_REPO_PATH} REPO_NAME=member-operator NAMESPACE=$(MEMBER_NS_TO_DEPLOY)
 
 .PHONY: e2e-service-account
