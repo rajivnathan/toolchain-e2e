@@ -61,7 +61,7 @@ e2e-run:
 	oc get toolchaincluster -n $(HOST_NS)
 	oc get toolchaincluster -n $(MEMBER_NS)
 	-oc new-project $(TEST_NS) --display-name e2e-tests 1>/dev/null
-	MEMBER_NS=${MEMBER_NS} MEMBER_NS_2=${MEMBER_NS_2} HOST_NS=${HOST_NS} REGISTRATION_SERVICE_NS=${REGISTRATION_SERVICE_NS} go test ./test/e2e -v -timeout=90m -failfast || \
+	MEMBER_NS=${MEMBER_NS} MEMBER_NS_2=${MEMBER_NS_2} HOST_NS=${HOST_NS} REGISTRATION_SERVICE_NS=${REGISTRATION_SERVICE_NS} go test ./test/e2e -v -timeout=90m -failfast -run TestE2EFlow || \
 	($(MAKE) print-logs HOST_NS=${HOST_NS} MEMBER_NS=${MEMBER_NS} MEMBER_NS_2=${MEMBER_NS_2} REGISTRATION_SERVICE_NS=${REGISTRATION_SERVICE_NS} && exit 1)
 
 .PHONY: print-logs
@@ -221,10 +221,7 @@ endif
 
 	$(MAKE) deploy-member MEMBER_REPO_PATH=${MEMBER_REPO_PATH} MEMBER_NS_TO_DEPLOY=$(MEMBER_NS)
 
-	@echo "Deploying second member without a deploy webhook since it can cause problems with the tests"
-	$(eval TMP_ENV_YAML := /tmp/${ENVIRONMENT}_${DATE_SUFFIX}.yaml)
-	sed 's|member-operator:|member-operator:\n  deploy-webhook: 'false'|' ${MEMBER_REPO_PATH}/deploy/env/${ENVIRONMENT}.yaml > ${TMP_ENV_YAML}
-	if [[ ${SECOND_MEMBER_MODE} == true ]]; then $(MAKE) deploy-member MEMBER_REPO_PATH=${MEMBER_REPO_PATH} MEMBER_NS_TO_DEPLOY=$(MEMBER_NS_2) ENV_YAML=${TMP_ENV_YAML}; fi
+	if [[ ${SECOND_MEMBER_MODE} == true ]]; then $(MAKE) deploy-member MEMBER_REPO_PATH=${MEMBER_REPO_PATH} MEMBER_NS_TO_DEPLOY=$(MEMBER_NS_2); fi
 
 .PHONY: deploy-member
 deploy-member:
@@ -259,6 +256,17 @@ endif
 	# as the controller starts (which is a use-case for CRT-231)
 	oc apply -f ${HOST_REPO_PATH}/deploy/crds/toolchain.dev.openshift.com_nstemplatetiers.yaml
 	oc apply -f deploy/host-operator/nstemplatetier-base.yaml -n $(HOST_NS)
+	# patch toolchainconfig to prevent webhook deploy for 2nd member, a 2nd webhook deploy causes the webhook verification in e2e tests to fail
+	# since e2e environment has 2 member operators running in the same cluster
+	if [[ ${MEMBER_NS_TO_DEPLOY} == $(MEMBER_NS_2) ]]; then \
+		API_ENDPOINT=`oc get infrastructure cluster -o jsonpath='{.status.apiServerURL}'`; \
+		TOOLCHAIN_CLUSTER_NAME=`echo "$${API_ENDPOINT}" | sed 's/.*api\.\([^:]*\):.*/\1/'`; \
+		echo "API_ENDPOINT $${API_ENDPOINT}"; \
+		echo "TOOLCHAIN_CLUSTER_NAME $${TOOLCHAIN_CLUSTER_NAME}"; \
+		PATCH_FILE=/tmp/patch-toolchainconfig_${DATE_SUFFIX}.json; \
+		echo "{\"spec\":{\"members\":{\"specificPerMemberCluster\":{\"member-$${TOOLCHAIN_CLUSTER_NAME}2\":{\"webhook\":{\"deploy\":false}}}}}}" > $$PATCH_FILE; \
+		oc patch toolchainconfig config -n $(HOST_NS) --type=merge --patch "$$(cat $$PATCH_FILE)"; \
+	fi;
 	# Apply the initial configuration for the toolchain
 	oc apply -f ${HOST_REPO_PATH}/deploy/crds/toolchain.dev.openshift.com_toolchainconfigs.yaml
 	oc apply -f deploy/host-operator/config/${ENVIRONMENT}.yaml -n $(HOST_NS)
