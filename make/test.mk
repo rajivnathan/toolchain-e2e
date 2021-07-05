@@ -256,6 +256,9 @@ endif
 	# as the controller starts (which is a use-case for CRT-231)
 	oc apply -f ${HOST_REPO_PATH}/deploy/crds/toolchain.dev.openshift.com_nstemplatetiers.yaml
 	oc apply -f deploy/host-operator/nstemplatetier-base.yaml -n $(HOST_NS)
+	# Apply the initial configuration for the toolchain
+	oc apply -f ${HOST_REPO_PATH}/deploy/crds/toolchain.dev.openshift.com_toolchainconfigs.yaml
+	oc apply -f deploy/host-operator/config/${ENVIRONMENT}.yaml -n $(HOST_NS)
 	# patch toolchainconfig to prevent webhook deploy for 2nd member, a 2nd webhook deploy causes the webhook verification in e2e tests to fail
 	# since e2e environment has 2 member operators running in the same cluster
 	if [[ ${SECOND_MEMBER_MODE} == true ]]; then \
@@ -267,9 +270,6 @@ endif
 		echo "{\"spec\":{\"members\":{\"specificPerMemberCluster\":{\"member-$${TOOLCHAIN_CLUSTER_NAME}2\":{\"webhook\":{\"deploy\":false}}}}}}" > $$PATCH_FILE; \
 		oc patch toolchainconfig config -n $(HOST_NS) --type=merge --patch "$$(cat $$PATCH_FILE)"; \
 	fi;
-	# Apply the initial configuration for the toolchain
-	oc apply -f ${HOST_REPO_PATH}/deploy/crds/toolchain.dev.openshift.com_toolchainconfigs.yaml
-	oc apply -f deploy/host-operator/config/${ENVIRONMENT}.yaml -n $(HOST_NS)
 	$(MAKE) build-operator E2E_REPO_PATH=${HOST_REPO_PATH} REPO_NAME=host-operator SET_IMAGE_NAME=${HOST_IMAGE_NAME} IS_OTHER_IMAGE_SET=${MEMBER_IMAGE_NAME}${REG_IMAGE_NAME}
 	$(MAKE) deploy-operator E2E_REPO_PATH=${HOST_REPO_PATH} REPO_NAME=host-operator NAMESPACE=$(HOST_NS)
 
