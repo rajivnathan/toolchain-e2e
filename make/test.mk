@@ -258,7 +258,7 @@ endif
 	oc apply -f deploy/host-operator/nstemplatetier-base.yaml -n $(HOST_NS)
 	# patch toolchainconfig to prevent webhook deploy for 2nd member, a 2nd webhook deploy causes the webhook verification in e2e tests to fail
 	# since e2e environment has 2 member operators running in the same cluster
-	if [[ ${MEMBER_NS_TO_DEPLOY} == $(MEMBER_NS_2) ]]; then \
+	if [[ ${SECOND_MEMBER_MODE} == true ]]; then \
 		API_ENDPOINT=`oc get infrastructure cluster -o jsonpath='{.status.apiServerURL}'`; \
 		TOOLCHAIN_CLUSTER_NAME=`echo "$${API_ENDPOINT}" | sed 's/.*api\.\([^:]*\):.*/\1/'`; \
 		echo "API_ENDPOINT $${API_ENDPOINT}"; \
