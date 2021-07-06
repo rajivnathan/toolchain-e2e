@@ -42,10 +42,11 @@ func TestE2EFlow(t *testing.T) {
 			VerifyToolchainConfig(t, hostAwait, wait.UntilToolchainConfigHasSyncedStatus(ToolchainConfigSyncComplete()))
 		})
 		t.Run("verify MemberOperatorConfig was synced to member 1", func(t *testing.T) {
-			VerifyMemberOperatorConfig(t, memberAwait, wait.UntilMemberConfigMatches(expectedMemberConfiguration))
+			VerifyMemberOperatorConfig(t, hostAwait, memberAwait, wait.UntilMemberConfigMatches(expectedMemberConfiguration))
 		})
 		t.Run("verify MemberOperatorConfig was synced to member 2", func(t *testing.T) {
-			VerifyMemberOperatorConfig(t, memberAwait2, wait.UntilMemberConfigMatches(expectedMemberConfiguration))
+			member2ExpectedConfig := testconfig.NewMemberOperatorConfig(testconfig.Webhook().Deploy(false))
+			VerifyMemberOperatorConfig(t, hostAwait, memberAwait2, wait.UntilMemberConfigMatches(member2ExpectedConfig.Spec))
 		})
 		t.Run("verify updated toolchainconfig is synced - go to unready", func(t *testing.T) {
 			// set the che required flag to true to force an error on the memberstatus (che is not installed in e2e test environments)

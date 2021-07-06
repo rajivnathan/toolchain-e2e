@@ -219,9 +219,9 @@ ifeq ($(MEMBER_REPO_PATH),)
 endif
 	$(MAKE) build-operator E2E_REPO_PATH=${MEMBER_REPO_PATH} REPO_NAME=member-operator SET_IMAGE_NAME=${MEMBER_IMAGE_NAME} IS_OTHER_IMAGE_SET=${HOST_IMAGE_NAME}${REG_IMAGE_NAME}
 
-	$(MAKE) deploy-member MEMBER_REPO_PATH=${MEMBER_REPO_PATH} MEMBER_NS_TO_DEPLOY=$(MEMBER_NS)
+	$(MAKE) deploy-member MEMBER_REPO_PATH=${MEMBER_REPO_PATH} MEMBER_NS_2=${MEMBER_NS_2} MEMBER_NS_TO_DEPLOY=$(MEMBER_NS)
 
-	if [[ ${SECOND_MEMBER_MODE} == true ]]; then $(MAKE) deploy-member MEMBER_REPO_PATH=${MEMBER_REPO_PATH} MEMBER_NS_TO_DEPLOY=$(MEMBER_NS_2); fi
+	if [[ ${SECOND_MEMBER_MODE} == true ]]; then $(MAKE) deploy-member MEMBER_REPO_PATH=${MEMBER_REPO_PATH} MEMBER_NS_2=${MEMBER_NS_2} MEMBER_NS_TO_DEPLOY=${MEMBER_NS_2}; fi
 
 .PHONY: deploy-member
 deploy-member:
@@ -230,7 +230,7 @@ deploy-member:
 	-oc label ns $(MEMBER_NS_TO_DEPLOY) app=member-operator
 	-oc project $(MEMBER_NS_TO_DEPLOY)
 	# temporary workaround until webhook deployment is handled by memberoperatorconfig controller: create a memberoperatorconfig to prevent webhook deploy for 2nd member
-	if [[ ${MEMBER_NS_TO_DEPLOY} == $(MEMBER_NS_2) ]]; then \
+	if [[ ${MEMBER_NS_TO_DEPLOY} == ${MEMBER_NS_2} ]]; then \
 		oc apply -f ${MEMBER_REPO_PATH}/deploy/crds/toolchain.dev.openshift.com_memberoperatorconfigs.yaml; \
 		oc apply -f deploy/member-operator/config/hack/${ENVIRONMENT}.yaml -n $(MEMBER_NS_TO_DEPLOY); \
 	fi;
