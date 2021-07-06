@@ -60,6 +60,7 @@ test-e2e-registration-local:
 e2e-run:
 	oc get toolchaincluster -n $(HOST_NS)
 	oc get toolchaincluster -n $(MEMBER_NS)
+	if [[ ${SECOND_MEMBER_MODE} == true ]]; then oc get toolchaincluster -n $(MEMBER_NS_2); fi
 	-oc new-project $(TEST_NS) --display-name e2e-tests 1>/dev/null
 	MEMBER_NS=${MEMBER_NS} MEMBER_NS_2=${MEMBER_NS_2} HOST_NS=${HOST_NS} REGISTRATION_SERVICE_NS=${REGISTRATION_SERVICE_NS} go test ./test/e2e -v -timeout=90m -failfast || \
 	($(MAKE) print-logs HOST_NS=${HOST_NS} MEMBER_NS=${MEMBER_NS} MEMBER_NS_2=${MEMBER_NS_2} REGISTRATION_SERVICE_NS=${REGISTRATION_SERVICE_NS} && exit 1)
@@ -230,10 +231,10 @@ deploy-member:
 	-oc label ns $(MEMBER_NS_TO_DEPLOY) app=member-operator
 	-oc project $(MEMBER_NS_TO_DEPLOY)
 	# temporary workaround until webhook deployment is handled by memberoperatorconfig controller: create a memberoperatorconfig to prevent webhook deploy for 2nd member
-	if [[ ${MEMBER_NS_TO_DEPLOY} == ${MEMBER_NS_2} ]]; then \
-		oc apply -f ${MEMBER_REPO_PATH}/deploy/crds/toolchain.dev.openshift.com_memberoperatorconfigs.yaml; \
-		oc apply -f deploy/member-operator/config/hack/${ENVIRONMENT}.yaml -n $(MEMBER_NS_TO_DEPLOY); \
-	fi;
+	# if [[ ${MEMBER_NS_TO_DEPLOY} == ${MEMBER_NS_2} ]]; then \
+	# 	oc apply -f ${MEMBER_REPO_PATH}/deploy/crds/toolchain.dev.openshift.com_memberoperatorconfigs.yaml; \
+	# 	oc apply -f deploy/member-operator/config/hack/${ENVIRONMENT}.yaml -n $(MEMBER_NS_TO_DEPLOY); \
+	# fi;
 	$(MAKE) deploy-operator E2E_REPO_PATH=${MEMBER_REPO_PATH} REPO_NAME=member-operator NAMESPACE=$(MEMBER_NS_TO_DEPLOY)
 
 .PHONY: e2e-service-account
@@ -257,19 +258,19 @@ endif
 	oc apply -f ${HOST_REPO_PATH}/deploy/crds/toolchain.dev.openshift.com_nstemplatetiers.yaml
 	oc apply -f deploy/host-operator/nstemplatetier-base.yaml -n $(HOST_NS)
 	# Apply the initial configuration for the toolchain
-	oc apply -f ${HOST_REPO_PATH}/deploy/crds/toolchain.dev.openshift.com_toolchainconfigs.yaml
-	oc apply -f deploy/host-operator/config/${ENVIRONMENT}.yaml -n $(HOST_NS)
+	# oc apply -f ${HOST_REPO_PATH}/deploy/crds/toolchain.dev.openshift.com_toolchainconfigs.yaml
+	# oc apply -f deploy/host-operator/config/${ENVIRONMENT}.yaml -n $(HOST_NS)
 	# patch toolchainconfig to prevent webhook deploy for 2nd member, a 2nd webhook deploy causes the webhook verification in e2e tests to fail
 	# since e2e environment has 2 member operators running in the same cluster
-	if [[ ${SECOND_MEMBER_MODE} == true ]]; then \
-		API_ENDPOINT=`oc get infrastructure cluster -o jsonpath='{.status.apiServerURL}'`; \
-		TOOLCHAIN_CLUSTER_NAME=`echo "$${API_ENDPOINT}" | sed 's/.*api\.\([^:]*\):.*/\1/'`; \
-		echo "API_ENDPOINT $${API_ENDPOINT}"; \
-		echo "TOOLCHAIN_CLUSTER_NAME $${TOOLCHAIN_CLUSTER_NAME}"; \
-		PATCH_FILE=/tmp/patch-toolchainconfig_${DATE_SUFFIX}.json; \
-		echo "{\"spec\":{\"members\":{\"specificPerMemberCluster\":{\"member-$${TOOLCHAIN_CLUSTER_NAME}2\":{\"webhook\":{\"deploy\":false}}}}}}" > $$PATCH_FILE; \
-		oc patch toolchainconfig config -n $(HOST_NS) --type=merge --patch "$$(cat $$PATCH_FILE)"; \
-	fi;
+	# if [[ ${SECOND_MEMBER_MODE} == true ]]; then \
+	# 	API_ENDPOINT=`oc get infrastructure cluster -o jsonpath='{.status.apiServerURL}'`; \
+	# 	TOOLCHAIN_CLUSTER_NAME=`echo "$${API_ENDPOINT}" | sed 's/.*api\.\([^:]*\):.*/\1/'`; \
+	# 	echo "API_ENDPOINT $${API_ENDPOINT}"; \
+	# 	echo "TOOLCHAIN_CLUSTER_NAME $${TOOLCHAIN_CLUSTER_NAME}"; \
+	# 	PATCH_FILE=/tmp/patch-toolchainconfig_${DATE_SUFFIX}.json; \
+	# 	echo "{\"spec\":{\"members\":{\"specificPerMemberCluster\":{\"member-$${TOOLCHAIN_CLUSTER_NAME}2\":{\"webhook\":{\"deploy\":false}}}}}}" > $$PATCH_FILE; \
+	# 	oc patch toolchainconfig config -n $(HOST_NS) --type=merge --patch "$$(cat $$PATCH_FILE)"; \
+	# fi;
 	$(MAKE) build-operator E2E_REPO_PATH=${HOST_REPO_PATH} REPO_NAME=host-operator SET_IMAGE_NAME=${HOST_IMAGE_NAME} IS_OTHER_IMAGE_SET=${MEMBER_IMAGE_NAME}${REG_IMAGE_NAME}
 	$(MAKE) deploy-operator E2E_REPO_PATH=${HOST_REPO_PATH} REPO_NAME=host-operator NAMESPACE=$(HOST_NS)
 
