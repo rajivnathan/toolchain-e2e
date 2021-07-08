@@ -231,7 +231,7 @@ deploy-member:
 	-oc label ns $(MEMBER_NS_TO_DEPLOY) app=member-operator
 	-oc project $(MEMBER_NS_TO_DEPLOY)
 	# temporary workaround until webhook deployment is handled by memberoperatorconfig controller: create a memberoperatorconfig to prevent webhook deploy for 2nd member
-	if [[ ${MEMBER_NS_TO_DEPLOY} == ${MEMBER_NS_2} ]]; then \
+	if [[ ${MEMBER_NS_TO_DEPLOY} == ${MEMBER_NS_2} && "${ENVIRONMENT}" == "e2e-tests" ]]; then \
 		oc apply -f ${MEMBER_REPO_PATH}/deploy/crds/toolchain.dev.openshift.com_memberoperatorconfigs.yaml; \
 		oc apply -f deploy/member-operator/config/hack/${ENVIRONMENT}.yaml -n $(MEMBER_NS_TO_DEPLOY); \
 	fi;
