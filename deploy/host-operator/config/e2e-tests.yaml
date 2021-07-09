@@ -3,6 +3,16 @@ kind: ToolchainConfig
 metadata:
   name: config
 spec:
+  host:
+    deactivation:
+      deactivationDomainsExcluded: "@excluded.com"
+    environment: "e2e-tests"
+    notifications:
+      durationBeforeNotificationDeletion: "5s"
+    tiers:
+      durationBeforeChangeTierRequestDeletion: "5s"
+    toolchainStatus:
+      toolchainStatusRefreshTime: "1s"
   members:
     default:
       autoscaler:
