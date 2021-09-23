@@ -96,7 +96,6 @@ func TestMetricsWhenUsersDeactivatedAndReactivated(t *testing.T) {
 		usersignups[username], _ = NewSignupRequest(t, hostAwait, memberAwait, member2Await).
 			Username(username).
 			ManuallyApprove().
-			TargetCluster(memberAwait).
 			EnsureMUR().
 			RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 			Execute().
@@ -116,7 +115,6 @@ func TestMetricsWhenUsersDeactivatedAndReactivated(t *testing.T) {
 				IdentityID(uuid.Must(uuid.FromString(usersignups[username].Spec.Userid))).
 				Username(username).
 				ManuallyApprove().
-				TargetCluster(memberAwait).
 				EnsureMUR().
 				RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 				Execute().
@@ -170,7 +168,6 @@ func TestMetricsWhenUsersDeleted(t *testing.T) {
 		usersignups[username], _ = NewSignupRequest(t, hostAwait, memberAwait, member2Await).
 			Username(username).
 			ManuallyApprove().
-			TargetCluster(memberAwait).
 			RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 			Execute().
 			Resources()
@@ -211,7 +208,6 @@ func TestMetricsWhenUsersBanned(t *testing.T) {
 		Email("metricsbanprovisioned@test.com").
 		ManuallyApprove().
 		EnsureMUR().
-		TargetCluster(memberAwait).
 		RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 		Execute().Resources()
 
@@ -269,7 +265,6 @@ func TestMetricsWhenUserDisabled(t *testing.T) {
 	_, mur := NewSignupRequest(t, hostAwait, memberAwait, member2Await).
 		Username("janedoe").
 		ManuallyApprove().
-		TargetCluster(memberAwait).
 		EnsureMUR().
 		RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 		Execute().

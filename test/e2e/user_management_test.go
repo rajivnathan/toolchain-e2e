@@ -57,7 +57,6 @@ func (s *userManagementTestSuite) TestUserDeactivation() {
 			Email("usertodeactivate@redhat.com").
 			ManuallyApprove().
 			EnsureMUR().
-			TargetCluster(s.memberAwait).
 			RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 			Execute().Resources()
 
@@ -88,7 +87,6 @@ func (s *userManagementTestSuite) TestUserDeactivation() {
 			Email("usernoemail@redhat.com").
 			ManuallyApprove().
 			EnsureMUR().
-			TargetCluster(s.memberAwait).
 			RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 			Execute().Resources()
 
@@ -112,7 +110,6 @@ func (s *userManagementTestSuite) TestUserDeactivation() {
 			Email("usernodeactivate@redhat.com").
 			ManuallyApprove().
 			EnsureMUR().
-			TargetCluster(s.memberAwait).
 			RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 			Execute().Resources()
 
@@ -154,7 +151,6 @@ func (s *userManagementTestSuite) TestUserDeactivation() {
 			Email("usertoautodeactivate@redhat.com").
 			ManuallyApprove().
 			EnsureMUR().
-			TargetCluster(s.memberAwait).
 			RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 			Execute().Resources()
 
@@ -163,7 +159,6 @@ func (s *userManagementTestSuite) TestUserDeactivation() {
 			Email("userdeactivationexcluded@excluded.com").
 			ManuallyApprove().
 			EnsureMUR().
-			TargetCluster(s.memberAwait).
 			RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 			Execute().Resources()
 
@@ -221,7 +216,6 @@ func (s *userManagementTestSuite) TestUserDeactivation() {
 			Email("usertostartdeactivating@redhat.com").
 			ManuallyApprove().
 			EnsureMUR().
-			TargetCluster(s.memberAwait).
 			RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 			Execute().Resources()
 
@@ -374,7 +368,6 @@ func (s *userManagementTestSuite) TestUserBanning() {
 			Username("banprovisioned").
 			Email("banprovisioned@test.com").
 			ManuallyApprove().
-			TargetCluster(s.memberAwait).
 			RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 			Execute().Resources()
 
@@ -473,7 +466,6 @@ func (s *userManagementTestSuite) TestUserBanning() {
 			Email("banandunban@test.com").
 			EnsureMUR().
 			ManuallyApprove().
-			TargetCluster(s.memberAwait).
 			RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 			Execute().Resources()
 
@@ -524,7 +516,6 @@ func (s *userManagementTestSuite) TestUserDisabled() {
 		Username("janedoe").
 		EnsureMUR().
 		ManuallyApprove().
-		TargetCluster(s.memberAwait).
 		RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 		Execute().Resources()
 

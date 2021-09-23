@@ -38,7 +38,6 @@ func TestNSTemplateTiers(t *testing.T) {
 	testingtiers, _ := NewSignupRequest(t, hostAwait, memberAwait, memberAwait2).
 		Username(testingTiersName).
 		ManuallyApprove().
-		TargetCluster(memberAwait).
 		EnsureMUR().
 		RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 		Execute().
@@ -111,7 +110,6 @@ func TestSetDefaultTier(t *testing.T) {
 		NewSignupRequest(t, hostAwait, memberAwait, memberAwait2).
 			Username("defaulttier").
 			ManuallyApprove().
-			TargetCluster(memberAwait).
 			EnsureMUR().
 			RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 			Execute().
@@ -195,7 +193,6 @@ func setupAccounts(t *testing.T, hostAwait *HostAwaitility, tierName, nameFmt st
 			ManuallyApprove().
 			EnsureMUR().
 			RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
-			TargetCluster(targetCluster).
 			Execute().
 			Resources()
 	}

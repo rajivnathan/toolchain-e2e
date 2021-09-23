@@ -191,6 +191,12 @@ func (r *signupRequest) Execute() SignupRequest {
 		}
 	}
 
+	// if using manual approval and the target cluster was not set, set the target cluster to the first member by default
+	// in an effort to reduce ambiguity and test flakiness when verifying results
+	if r.manuallyApprove && r.targetCluster == nil {
+		r.targetCluster = r.memberAwait
+	}
+
 	if r.manuallyApprove || r.targetCluster != nil || (r.verificationRequired != states.VerificationRequired(userSignup)) {
 		doUpdate := func(instance *toolchainv1alpha1.UserSignup) {
 			// We set the VerificationRequired state first, because if manuallyApprove is also set then it will

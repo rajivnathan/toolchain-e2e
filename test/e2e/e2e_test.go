@@ -93,7 +93,6 @@ func TestE2EFlow(t *testing.T) {
 	johnSignup, _ := NewSignupRequest(t, hostAwait, memberAwait, memberAwait2).
 		Username(johnsmithName).
 		ManuallyApprove().
-		TargetCluster(memberAwait).
 		EnsureMUR().
 		RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 		Execute().Resources()
@@ -103,7 +102,6 @@ func TestE2EFlow(t *testing.T) {
 		Username(extrajohnName).
 		ManuallyApprove().
 		EnsureMUR().
-		TargetCluster(memberAwait).
 		RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 		Execute().Resources()
 
@@ -253,7 +251,6 @@ func TestE2EFlow(t *testing.T) {
 			Email("laracroft@redhat.com").
 			ManuallyApprove().
 			EnsureMUR().
-			TargetCluster(memberAwait).
 			RequireConditions(ConditionSet(Default(), ApprovedByAdmin())...).
 			Execute().Resources()
 
