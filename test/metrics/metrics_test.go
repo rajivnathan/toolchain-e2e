@@ -35,7 +35,7 @@ func TestMetricsWhenUsersDeactivated(t *testing.T) {
 	metricsAssertion := InitMetricsAssertion(t, hostAwait, []string{memberAwait.ClusterName})
 	usersignups := map[string]*toolchainv1alpha1.UserSignup{}
 	for i := 1; i <= 2; i++ {
-		username := fmt.Sprintf("user-%04d", i)
+		username := fmt.Sprintf("metric-deactivate-user-%04d", i)
 
 		// Create UserSignup
 		usersignups[username], _ = NewSignupRequest(t, awaitilities).
@@ -96,7 +96,7 @@ func TestMetricsWhenUsersDeactivatedAndReactivated(t *testing.T) {
 
 	// when
 	for i := 1; i <= 3; i++ {
-		username := fmt.Sprintf("user-%04d", i)
+		username := fmt.Sprintf("metric-reactivate-user-%04d", i)
 
 		usersignups[username], _ = NewSignupRequest(t, awaitilities).
 			Username(username).
@@ -173,7 +173,7 @@ func TestMetricsWhenUsersDeleted(t *testing.T) {
 	usersignups := map[string]*toolchainv1alpha1.UserSignup{}
 
 	for i := 1; i <= 2; i++ {
-		username := fmt.Sprintf("user-%04d", i)
+		username := fmt.Sprintf("metric-deleted-user-%04d", i)
 		usersignups[username], _ = NewSignupRequest(t, awaitilities).
 			Username(username).
 			ManuallyApprove().
@@ -184,7 +184,7 @@ func TestMetricsWhenUsersDeleted(t *testing.T) {
 	}
 
 	// when deleting user "user-0001"
-	err := hostAwait.Client.Delete(context.TODO(), usersignups["user-0001"])
+	err := hostAwait.Client.Delete(context.TODO(), usersignups["metric-deleted-user-0001"])
 
 	// then
 	require.NoError(t, err)
@@ -192,7 +192,7 @@ func TestMetricsWhenUsersDeleted(t *testing.T) {
 	metricsAssertion.WaitForMetricDelta(UsersPerActivationsAndDomainMetric, 2, "activations", "1", "domain", "external") // user-0001 and user-0002 have been provisioned
 
 	// when deleting user "user-0002"
-	err = hostAwait.Client.Delete(context.TODO(), usersignups["user-0002"])
+	err = hostAwait.Client.Delete(context.TODO(), usersignups["metric-deleted-user-0002"])
 
 	// then
 	require.NoError(t, err)
