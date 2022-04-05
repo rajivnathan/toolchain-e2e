@@ -145,21 +145,17 @@ func UntilUserAccountHasAnnotation(key, value string) UserAccountWaitCriterion {
 }
 
 // UntilUserAccountHasSpec returns a `UserAccountWaitCriterion` which checks that the given
-// USerAccount has the expected spec
+// UserAccount has the expected spec
 func UntilUserAccountHasSpec(expected toolchainv1alpha1.UserAccountSpec) UserAccountWaitCriterion {
 	return UserAccountWaitCriterion{
 		Match: func(actual *toolchainv1alpha1.UserAccount) bool {
 			userAccount := actual.DeepCopy()
-			userAccount.Spec.NSTemplateSet = &toolchainv1alpha1.NSTemplateSetSpec{}
 			expectedSpec := expected.DeepCopy()
-			expectedSpec.NSTemplateSet = &toolchainv1alpha1.NSTemplateSetSpec{}
 			return reflect.DeepEqual(userAccount.Spec, *expectedSpec)
 		},
 		Diff: func(actual *toolchainv1alpha1.UserAccount) string {
 			userAccount := actual.DeepCopy()
-			userAccount.Spec.NSTemplateSet = &toolchainv1alpha1.NSTemplateSetSpec{}
 			expectedSpec := expected.DeepCopy()
-			expectedSpec.NSTemplateSet = &toolchainv1alpha1.NSTemplateSetSpec{}
 			return fmt.Sprintf("expected specs to match: %s", Diff(expectedSpec, userAccount.Spec))
 		},
 	}
@@ -175,15 +171,14 @@ func UntilUserAccountMatchesMur(hostAwaitility *HostAwaitility) UserAccountWaitC
 				return false
 			}
 			return actual.Spec.UserID == mur.Spec.UserID &&
-				actual.Spec.Disabled == mur.Spec.Disabled &&
-				reflect.DeepEqual(actual.Spec.UserAccountSpecBase, mur.Spec.UserAccounts[0].Spec.UserAccountSpecBase)
+				actual.Spec.Disabled == mur.Spec.Disabled
 		},
 		Diff: func(actual *toolchainv1alpha1.UserAccount) string {
 			mur, err := hostAwaitility.GetMasterUserRecord(actual.Name)
 			if err != nil {
 				return fmt.Sprintf("could not find mur for user account '%s'", actual.Name)
 			}
-			return fmt.Sprintf("expected mur to match with useraccount:\n\tUserID: %s/%s\n\tDisabled: %t/%t\n\t%s", actual.Spec.UserID, mur.Spec.UserID, actual.Spec.Disabled, mur.Spec.Disabled, Diff(mur.Spec.UserAccounts[0].Spec.UserAccountSpecBase, actual.Spec.UserAccountSpecBase))
+			return fmt.Sprintf("expected mur to match with useraccount:\n\tUserID: %s/%s\n\tDisabled: %t/%t\n", actual.Spec.UserID, mur.Spec.UserID, actual.Spec.Disabled, mur.Spec.Disabled)
 		},
 	}
 }

@@ -11,7 +11,9 @@ import (
 
 	toolchainv1alpha1 "github.com/codeready-toolchain/api/api/v1alpha1"
 	"github.com/codeready-toolchain/toolchain-common/pkg/states"
+	testtier "github.com/codeready-toolchain/toolchain-common/pkg/test/tier"
 	. "github.com/codeready-toolchain/toolchain-e2e/testsupport"
+	"github.com/codeready-toolchain/toolchain-e2e/testsupport/wait"
 	. "github.com/codeready-toolchain/toolchain-e2e/testsupport/wait"
 
 	"github.com/go-logr/logr"
@@ -163,11 +165,25 @@ func createSignupsByBatch(t *testing.T, hostAwait *HostAwaitility, config Config
 			mur, err := hostAwait.WaitForMasterUserRecord(signup.Spec.Username, UntilMasterUserRecordHasCondition(Provisioned()))
 			require.NoError(t, err)
 			// now, run a pod (with the `sleep 28800` command in each namespace)
-			userAccount, err := memberAwait.WaitForUserAccount(mur.Name,
-				UntilUserAccountHasConditions(Provisioned()))
+
+			tier, err := hostAwait.WaitForNSTemplateTier(mur.Spec.TierName)
 			require.NoError(t, err)
-			for _, templateRef := range userAccount.Spec.NSTemplateSet.Namespaces {
-				ns, err := memberAwait.WaitForNamespace(mur.Name, templateRef.TemplateRef, userAccount.Spec.NSTemplateSet.TierName, UntilNamespaceIsActive())
+			hash, err := testtier.ComputeTemplateRefsHash(tier) // we can assume the JSON marshalling will always work
+			require.NoError(t, err)
+
+			space, err := hostAwait.WaitForSpace(mur.Name,
+				UntilSpaceHasTier(mur.Spec.TierName),
+				UntilSpaceHasLabelWithValue(toolchainv1alpha1.SpaceCreatorLabelKey, signup.Name),
+				UntilSpaceHasLabelWithValue(fmt.Sprintf("toolchain.dev.openshift.com/%s-tier-hash", mur.Spec.TierName), hash),
+				UntilSpaceHasConditions(Provisioned()),
+				UntilSpaceHasStateLabel(toolchainv1alpha1.SpaceStateLabelValueClusterAssigned),
+				UntilSpaceHasStatusTargetCluster(mur.Spec.UserAccounts[0].TargetCluster))
+			require.NoError(t, err)
+
+			nsTemplateSet, err := memberAwait.WaitForNSTmplSet(space.Name, wait.UntilNSTemplateSetHasTier(tier.Name))
+			require.NoError(t, err)
+			for _, templateRef := range nsTemplateSet.Spec.Namespaces {
+				ns, err := memberAwait.WaitForNamespace(mur.Name, templateRef.TemplateRef, mur.Spec.TierName, UntilNamespaceIsActive())
 				require.NoError(t, err)
 				if ns.Labels["toolchain.dev.openshift.com/type"] != "stage" {
 					// skip pod creation if the namespace is not "stage", otherwise, we may run out of capacity of pods on the nodes
