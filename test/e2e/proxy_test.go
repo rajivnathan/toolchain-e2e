@@ -18,7 +18,6 @@ import (
 	"time"
 
 	toolchainv1alpha1 "github.com/codeready-toolchain/api/api/v1alpha1"
-	identitypkg "github.com/codeready-toolchain/toolchain-common/pkg/identity"
 	testconfig "github.com/codeready-toolchain/toolchain-common/pkg/test/config"
 	. "github.com/codeready-toolchain/toolchain-e2e/testsupport"
 	hasv1alpha1 "github.com/codeready-toolchain/toolchain-e2e/testsupport/has/api/v1alpha1"
@@ -26,10 +25,8 @@ import (
 
 	"github.com/gofrs/uuid"
 	"github.com/gorilla/websocket"
-	userv1 "github.com/openshift/api/user/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubewait "k8s.io/apimachinery/pkg/util/wait"
@@ -81,10 +78,13 @@ func TestProxyFlow(t *testing.T) {
 		},
 	}
 
-	// if there is an identity & user resources already present, but don't contain "owner" label, then they shouldn't be deleted
-	preexistingUser, preexistingIdentity := createPreexistingUserAndIdentity(t, users[0])
+	for i := 3; i < 10; i++ {
+		users = append(users, *newProxyUser(fmt.Sprintf("proxymember%d", i), memberAwait))
+	}
 
-	for index, user := range users {
+	avgProxyCachedDuration := 0 * time.Second
+
+	for _, user := range users {
 		t.Run(user.username, func(t *testing.T) {
 			// Create and approve signup
 			req := NewSignupRequest(t, awaitilities).
@@ -105,10 +105,6 @@ func TestProxyFlow(t *testing.T) {
 			require.NoError(t, err)
 
 			t.Run("use proxy to create a HAS Application CR in the user appstudio namespace via proxy API and use websocket to watch it created", func(t *testing.T) {
-				// Start a new websocket watcher which watches for Application CRs in the user's namespace
-				w := newWsWatcher(t, user, hostAwait.APIProxyURL)
-				closeConnection := w.Start()
-				defer closeConnection()
 				proxyCl := hostAwait.CreateAPIProxyClient(user.token)
 
 				// Create and retrieve the application resources multiple times for the same user to make sure the proxy cache kicks in.
@@ -118,18 +114,16 @@ func TestProxyFlow(t *testing.T) {
 					expectedApp := newApplication(applicationName, user.compliantUsername)
 
 					// when
+					start := time.Now()
 					err := proxyCl.Create(context.TODO(), expectedApp)
 					require.NoError(t, err)
 
+					if i == 1 {
+						duration := time.Since(start)
+						avgProxyCachedDuration += duration
+					}
+
 					// then
-					// wait for the websocket watcher which uses the proxy to receive the Application CR
-					found, err := w.WaitForApplication(
-						user.expectedMemberCluster.RetryInterval,
-						user.expectedMemberCluster.Timeout,
-						expectedApp.Name,
-					)
-					require.NoError(t, err)
-					assert.NotEmpty(t, found)
 
 					// Double check that the Application does exist using a regular client (non-proxy)
 					createdApp := &hasv1alpha1.Application{}
@@ -140,91 +134,18 @@ func TestProxyFlow(t *testing.T) {
 				}
 			})
 
-			t.Run("try to create a resource in an unauthorized namespace", func(t *testing.T) {
-				// given
-				appName := fmt.Sprintf("%s-proxy-test-app", user.username)
-				expectedApp := &hasv1alpha1.Application{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      appName,
-						Namespace: hostAwait.Namespace, // user should not be allowed to create a resource in the host operator namespace
-					},
-					Spec: hasv1alpha1.ApplicationSpec{
-						DisplayName: "Should be forbidden",
-					},
-				}
-
-				// when
-				proxyCl := hostAwait.CreateAPIProxyClient(user.token)
-
-				// then
-				err := proxyCl.Create(context.TODO(), expectedApp)
-				require.EqualError(t, err, fmt.Sprintf(`applications.appstudio.redhat.com is forbidden: User "%[1]s" cannot create resource "applications" in API group "appstudio.redhat.com" in the namespace "%[2]s"`, user.compliantUsername, hostAwait.Namespace))
-			})
-
-			if index == 1 { // only for the second user
-				t.Run("try to create a resource in the other users namespace", func(t *testing.T) {
-					// given
-					// verify first user's namespace still exists
-					ns := &corev1.Namespace{}
-					err := hostAwait.Client.Get(context.TODO(), types.NamespacedName{Name: users[0].username}, ns)
-					require.NoError(t, err, "failed to verify the first user's namespace still exists")
-
-					appName := fmt.Sprintf("%s-proxy-test-app", users[0].username)
-					appToCreate := &hasv1alpha1.Application{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      appName,
-							Namespace: users[0].expectedMemberCluster.Namespace, // user should not be allowed to create a resource in the first user's namespace
-						},
-						Spec: hasv1alpha1.ApplicationSpec{
-							DisplayName: "Should be forbidden",
-						},
-					}
-
-					// when
-					proxyCl := hostAwait.CreateAPIProxyClient(user.token)
-					err = proxyCl.Create(context.TODO(), appToCreate)
-
-					// then
-					require.EqualError(t, err, fmt.Sprintf(`applications.appstudio.redhat.com is forbidden: User "%[1]s" cannot create resource "applications" in API group "appstudio.redhat.com" in the namespace "%[2]s"`, user.compliantUsername, users[0].expectedMemberCluster.Namespace))
-				})
-			}
 		})
 	} // end users loop
-
-	// preexisting user & identity are still there
-	// Verify provisioned User
-	_, err := memberAwait.WaitForUser(preexistingUser.Name)
-	assert.NoError(t, err)
-
-	// Verify provisioned Identity
-	_, err = memberAwait.WaitForIdentity(preexistingIdentity.Name)
-	assert.NoError(t, err)
+	avgCall := int(avgProxyCachedDuration.Seconds()) / len(users)
+	t.Logf("average cached proxy call duration %d in seconds", avgCall)
 }
 
-func createPreexistingUserAndIdentity(t *testing.T, user proxyUser) (*userv1.User, *userv1.Identity) {
-	preexistingUser := &userv1.User{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: user.username,
-		},
-		Identities: []string{
-			identitypkg.NewIdentityNamingStandard(user.identityID.String(), "rhd").IdentityName(),
-		},
+func newProxyUser(username string, memberAwait *wait.MemberAwaitility) *proxyUser {
+	return &proxyUser{
+		expectedMemberCluster: memberAwait,
+		username:              username,
+		identityID:            uuid.Must(uuid.NewV4()),
 	}
-	require.NoError(t, user.expectedMemberCluster.CreateWithCleanup(context.TODO(), preexistingUser))
-
-	preexistingIdentity := &userv1.Identity{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: identitypkg.NewIdentityNamingStandard(user.identityID.String(), "rhd").IdentityName(),
-		},
-		ProviderName:     "rhd",
-		ProviderUserName: user.username,
-		User: corev1.ObjectReference{
-			Name: preexistingUser.Name,
-			UID:  preexistingUser.UID,
-		},
-	}
-	require.NoError(t, user.expectedMemberCluster.CreateWithCleanup(context.TODO(), preexistingIdentity))
-	return preexistingUser, preexistingIdentity
 }
 
 func newWsWatcher(t *testing.T, user proxyUser, proxyURL string) *wsWatcher {
