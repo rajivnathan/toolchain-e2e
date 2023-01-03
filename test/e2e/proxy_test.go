@@ -119,13 +119,12 @@ func TestProxyFlow(t *testing.T) {
 					err := proxyCl.Create(context.TODO(), expectedApp)
 					require.NoError(t, err)
 
+					duration := time.Since(start)
 					if i == 0 {
 						// first request
-						duration := time.Since(start)
 						avgProxyInitialDuration += duration
 					} else {
 						// second request
-						duration := time.Since(start)
 						avgProxyCachedDuration += duration
 					}
 
