@@ -82,7 +82,8 @@ func TestProxyFlow(t *testing.T) {
 		users = append(users, *newProxyUser(fmt.Sprintf("proxymember%d", i), memberAwait))
 	}
 
-	avgProxyCachedDuration := 0 * time.Second
+	avgProxyInitialDuration := 0 * time.Millisecond
+	avgProxyCachedDuration := 0 * time.Millisecond
 
 	for _, user := range users {
 		t.Run(user.username, func(t *testing.T) {
@@ -101,7 +102,7 @@ func TestProxyFlow(t *testing.T) {
 			user.compliantUsername = user.signup.Status.CompliantUsername
 
 			VerifyResourcesProvisionedForSignup(t, awaitilities, user.signup, "deactivate30", "appstudio")
-			_, err := hostAwait.GetMasterUserRecord(user.compliantUsername)
+			_, err := hostAwait.WaitForMasterUserRecord(user.compliantUsername, wait.UntilMasterUserRecordHasCondition(Provisioned()))
 			require.NoError(t, err)
 
 			t.Run("use proxy to create a HAS Application CR in the user appstudio namespace via proxy API and use websocket to watch it created", func(t *testing.T) {
@@ -118,7 +119,12 @@ func TestProxyFlow(t *testing.T) {
 					err := proxyCl.Create(context.TODO(), expectedApp)
 					require.NoError(t, err)
 
-					if i == 1 {
+					if i == 0 {
+						// first request
+						duration := time.Since(start)
+						avgProxyInitialDuration += duration
+					} else {
+						// second request
 						duration := time.Since(start)
 						avgProxyCachedDuration += duration
 					}
@@ -136,8 +142,10 @@ func TestProxyFlow(t *testing.T) {
 
 		})
 	} // end users loop
-	avgCall := int(avgProxyCachedDuration.Seconds()) / len(users)
-	t.Logf("average cached proxy call duration %d in seconds", avgCall)
+	avgInitialCall := int(avgProxyInitialDuration.Milliseconds()) / len(users)
+	avgCachedCall := int(avgProxyCachedDuration.Milliseconds()) / len(users)
+	t.Logf("average initial proxy call duration %d in milliseconds", avgInitialCall)
+	t.Logf("average cached proxy call duration %d in milliseconds", avgCachedCall)
 }
 
 func newProxyUser(username string, memberAwait *wait.MemberAwaitility) *proxyUser {
