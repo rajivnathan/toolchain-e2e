@@ -46,12 +46,35 @@ func TestPrepareRecordsBuildName(t *testing.T) {
 	bc := &buildv1.BuildConfig{}
 	require.NoError(t, cl.Get(context.TODO(), types.NamespacedName{Namespace: run.TestNamespace, Name: run.BuildConfigName}, bc))
 	require.Equal(t, "perf-job:tr-1", bc.Spec.Output.To.Name)
+	require.Equal(t, run.GitURI, bc.Spec.Source.Git.URI)
+	require.Equal(t, run.GitRef, bc.Spec.Source.Git.Ref)
 
 	is := &imagev1.ImageStream{}
 	require.NoError(t, cl.Get(context.TODO(), types.NamespacedName{Namespace: run.TestNamespace, Name: run.ImageStreamName}, is))
 
 	ns := &corev1.Namespace{}
 	require.NoError(t, cl.Get(context.TODO(), types.NamespacedName{Name: run.TestNamespace}, ns))
+}
+
+func TestPrepareUsesGitOverride(t *testing.T) {
+	// given
+	cl := perftest.NewFakeClient(t)
+	tr := &run.TestRun{
+		ID:        "tr-fork",
+		GitURI:    "https://github.com/rajivnathan/toolchain-e2e",
+		GitRef:    "my-branch",
+		SetupRuns: []run.SetupRun{{Users: 1, Username: "setup"}},
+	}
+
+	// when
+	err := Prepare(context.TODO(), cl, perftest.NewFakeInstantiator(cl), tr, nil, "")
+
+	// then
+	require.NoError(t, err)
+	bc := &buildv1.BuildConfig{}
+	require.NoError(t, cl.Get(context.TODO(), types.NamespacedName{Namespace: run.TestNamespace, Name: run.BuildConfigName}, bc))
+	require.Equal(t, "https://github.com/rajivnathan/toolchain-e2e", bc.Spec.Source.Git.URI)
+	require.Equal(t, "my-branch", bc.Spec.Source.Git.Ref)
 }
 
 func TestStartBuildSendsInstantiateRequest(t *testing.T) {

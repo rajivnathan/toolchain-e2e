@@ -5,6 +5,7 @@ LABEL author="Developer Sandbox <devsandbox@redhat.com>"
 
 ENV GOPATH=/tmp/go \
     GOCACHE=/tmp/.cache \
+    HOME=/tmp \
     PATH=$PATH:$GOPATH/bin:/usr/local/go/bin \
     GIT_COMMITTER_NAME="Developer Sandbox" \
     GIT_COMMITTER_EMAIL=devsandbox@redhat.com \
@@ -42,6 +43,10 @@ WORKDIR /opt/toolchain-e2e
 COPY . .
 RUN chmod +x build/perf-job/entrypoint.sh \
     && go build -o /usr/local/bin/setup ./setup \
-    && ln -sf /opt/toolchain-e2e/build/perf-job/entrypoint.sh /usr/local/bin/entrypoint
+    && ln -sf /opt/toolchain-e2e/build/perf-job/entrypoint.sh /usr/local/bin/entrypoint \
+    && git config --system --add safe.directory /opt/toolchain-e2e \
+    && mkdir -p /opt/toolchain-e2e/build/_output /tmp/go /tmp/.cache \
+    && chgrp -R 0 /opt/toolchain-e2e /tmp/go /tmp/.cache \
+    && chmod -R g=u /opt/toolchain-e2e /tmp/go /tmp/.cache
 
 ENTRYPOINT ["/usr/local/bin/entrypoint"]

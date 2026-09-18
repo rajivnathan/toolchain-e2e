@@ -75,3 +75,13 @@ go run ./perfapp --listen 127.0.0.1:8080 --namespace <your-ns>
 ```
 
 Use a kubeconfig that can manage ConfigMaps/Secrets in that namespace. Point a browser at `http://127.0.0.1:8080`. GitHub user header will be `unknown` without oauth2-proxy.
+
+By default the test-cluster BuildConfig clones `https://github.com/codeready-toolchain/toolchain-e2e` at `master`. To build a fork or branch instead:
+
+```
+go run ./perfapp --listen 127.0.0.1:8080 --namespace <your-ns> \
+  --git-uri https://github.com/rajivnathan/toolchain-e2e \
+  --git-ref my-branch
+```
+
+The fork must be reachable from the test cluster and contain `build/perf-job/Dockerfile`. The same flags work on the in-cluster Deployment if you add them to the container args.

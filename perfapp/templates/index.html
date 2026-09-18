@@ -17,7 +17,7 @@
 <body>
   <nav><a href="/">New run</a><a href="/runs">Runs</a></nav>
   <h1>New Test Run</h1>
-  <p class="note">The onboarding operator must already be installed on the test cluster. Jobs do not clone this repository; Prepare builds a job image from GitHub <code>master</code>.</p>
+  <p class="note">The onboarding operator must already be installed on the test cluster. Jobs do not clone this repository; Prepare builds a job image from <code>{{.GitURI}}</code> (<code>{{.GitRef}}</code>).</p>
   {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
   <form method="post" action="/runs" enctype="multipart/form-data" id="run-form">
     <p>

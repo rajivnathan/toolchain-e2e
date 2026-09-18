@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codeready-toolchain/toolchain-e2e/perfapp/run"
 	"github.com/codeready-toolchain/toolchain-e2e/perfapp/validate"
 
 	"k8s.io/client-go/rest"
@@ -20,6 +21,8 @@ import (
 func main() {
 	listen := flag.String("listen", "127.0.0.1:8080", "address to listen on (app is localhost-only behind oauth2-proxy)")
 	namespace := flag.String("namespace", "", "app namespace for Test Run ConfigMaps (default: in-cluster namespace)")
+	gitURI := flag.String("git-uri", run.GitURI, "Git repository cloned by the perf-job BuildConfig")
+	gitRef := flag.String("git-ref", run.GitRef, "Git branch, tag, or commit cloned by the perf-job BuildConfig")
 	flag.Parse()
 
 	ns := *namespace
@@ -55,12 +58,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}
+	srv.Build = BuildConfiguration{GitURI: *gitURI, GitRef: *gitRef}
+	if err := srv.Build.Validate(); err != nil {
+		log.Fatal(err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go srv.Poller().Run(ctx, 15*time.Second)
 
-	log.Printf("perfapp listening on %s (namespace %s)", *listen, ns)
+	log.Printf("perfapp listening on %s (namespace %s, git %s@%s)", *listen, ns, srv.Build.URI(), srv.Build.Ref())
 	if err := http.ListenAndServe(*listen, srv.Handler()); err != nil { //nolint:gosec
 		log.Fatal(err)
 	}

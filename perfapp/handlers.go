@@ -33,7 +33,35 @@ type Server struct {
 	Templates       *template.Template
 	NewTestClient   func([]byte) (client.Client, *rest.Config, error)
 	NewInstantiator func(*rest.Config) (remote.Instantiator, error)
+	Build           BuildConfiguration
 	Now             func() time.Time
+}
+
+// BuildConfiguration is the Git source used for the test-cluster perf-job BuildConfig.
+type BuildConfiguration struct {
+	GitURI string
+	GitRef string
+}
+
+func (b BuildConfiguration) URI() string {
+	if strings.TrimSpace(b.GitURI) != "" {
+		return strings.TrimSpace(b.GitURI)
+	}
+	return run.GitURI
+}
+
+func (b BuildConfiguration) Ref() string {
+	if strings.TrimSpace(b.GitRef) != "" {
+		return strings.TrimSpace(b.GitRef)
+	}
+	return run.GitRef
+}
+
+func (b BuildConfiguration) Validate() error {
+	if b.URI() == "" || b.Ref() == "" {
+		return fmt.Errorf("git URI and ref must not be empty")
+	}
+	return nil
 }
 
 func NewServer(appClient client.Client, namespace string, newTest ClientFactory) (*Server, error) {
@@ -74,7 +102,11 @@ func (s *Server) Poller() *Poller {
 }
 
 func (s *Server) getForm(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "index.html", map[string]any{"Error": r.URL.Query().Get("error")})
+	s.render(w, "index.html", map[string]any{
+		"Error":  r.URL.Query().Get("error"),
+		"GitURI": s.Build.URI(),
+		"GitRef": s.Build.Ref(),
+	})
 }
 
 func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
@@ -206,6 +238,8 @@ func (s *Server) createRun(ctx context.Context, createdBy string, in validate.In
 		Testname:     validated.Testname,
 		TemplateFile: validated.TemplateName,
 		SetupRuns:    validated.SetupRuns,
+		GitURI:       s.Build.URI(),
+		GitRef:       s.Build.Ref(),
 	}
 	if err := run.Create(ctx, s.AppClient, s.Namespace, tr, in.Kubeconfig); err != nil {
 		return "", http.StatusInternalServerError, err.Error()

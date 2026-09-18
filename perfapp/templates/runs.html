@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8">
   <title>Test Runs</title>
+  <meta http-equiv="refresh" content="15">
   <style>
-    body { font-family: sans-serif; margin: 2rem auto; max-width: 960px; }
+    body { font-family: sans-serif; margin: 2rem auto; max-width: 1100px; }
     table { border-collapse: collapse; width: 100%; }
     th, td { border: 1px solid #ccc; padding: 0.4rem; text-align: left; }
     nav a { margin-right: 1rem; }
@@ -15,17 +16,18 @@
   <h1>Test Runs</h1>
   {{if not .Runs}}<p>No Test Runs yet.</p>{{else}}
   <table>
-    <thead><tr><th>ID</th><th>GitHub user</th><th>API host</th><th>Phase</th><th>Created</th></tr></thead>
+    <thead><tr><th>ID</th><th>GitHub user</th><th>API host</th><th>Phase</th><th>Build</th><th>Created</th></tr></thead>
     <tbody>
-      {{range .Runs}}
+    {{range .Runs}}
       <tr>
         <td><a href="/runs/{{.ID}}">{{.ID}}</a></td>
         <td>{{.CreatedBy}}</td>
         <td>{{.APIServer}}</td>
         <td>{{.Phase}}</td>
+        <td>{{if .BuildName}}{{.BuildName}}{{if .BuildPhase}} · {{.BuildPhase}}{{end}}{{if .BuildMessage}} · {{.BuildMessage}}{{end}}{{end}}</td>
         <td>{{.CreatedAt.UTC.Format "2006-01-02 15:04:05 UTC"}}</td>
       </tr>
-      {{end}}
+    {{end}}
     </tbody>
   </table>
   {{end}}

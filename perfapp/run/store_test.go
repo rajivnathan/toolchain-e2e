@@ -194,3 +194,29 @@ func TestListSkipsUnlabeled(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 }
+
+func TestSourceGitDefaultsAndOverride(t *testing.T) {
+	t.Run("defaults", func(t *testing.T) {
+		// given
+		var tr *TestRun
+
+		// when
+		uri, ref := tr.SourceGitURI(), tr.SourceGitRef()
+
+		// then
+		require.Equal(t, GitURI, uri)
+		require.Equal(t, GitRef, ref)
+	})
+
+	t.Run("override", func(t *testing.T) {
+		// given
+		tr := &TestRun{GitURI: "https://github.com/rajivnathan/toolchain-e2e", GitRef: "my-branch"}
+
+		// when
+		uri, ref := tr.SourceGitURI(), tr.SourceGitRef()
+
+		// then
+		require.Equal(t, "https://github.com/rajivnathan/toolchain-e2e", uri)
+		require.Equal(t, "my-branch", ref)
+	})
+}

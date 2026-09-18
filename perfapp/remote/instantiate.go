@@ -27,20 +27,19 @@ func NewInstantiator(cfg *rest.Config) (Instantiator, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("rest config is required to instantiate builds")
 	}
-	rc, err := newBuildRESTClient(cfg)
+	s := runtime.NewScheme()
+	if err := buildv1.Install(s); err != nil {
+		return nil, err
+	}
+	metav1.AddToGroupVersion(s, schema.GroupVersion{Version: "v1"})
+	rc, err := newBuildRESTClient(cfg, s)
 	if err != nil {
 		return nil, err
 	}
 	return &restInstantiator{client: rc}, nil
 }
 
-func newBuildRESTClient(cfg *rest.Config) (rest.Interface, error) {
-	s := runtime.NewScheme()
-	if err := buildv1.Install(s); err != nil {
-		return nil, err
-	}
-	metav1.AddToGroupVersion(s, schema.GroupVersion{Version: "v1"})
-
+func newBuildRESTClient(cfg *rest.Config, s *runtime.Scheme) (rest.Interface, error) {
 	restCfg := rest.CopyConfig(cfg)
 	gv := buildv1.SchemeGroupVersion
 	restCfg.GroupVersion = &gv

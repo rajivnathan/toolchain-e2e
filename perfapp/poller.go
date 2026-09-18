@@ -76,15 +76,19 @@ func (p *Poller) advancePrepare(ctx context.Context, testCl client.Client, tr *r
 	if err != nil {
 		return fmt.Errorf("get build: %w", err)
 	}
+	remote.ApplyBuildStatus(tr, b)
 	if remote.BuildFailed(b) {
 		msg := string(b.Status.Phase)
 		if b.Status.Message != "" {
 			msg = b.Status.Message
 		}
+		if b.Status.LogSnippet != "" {
+			msg = msg + "\n" + b.Status.LogSnippet
+		}
 		return p.fail(ctx, tr, "image build "+msg)
 	}
 	if b.Status.Phase != buildv1.BuildPhaseComplete {
-		return nil
+		return run.UpdateStatus(ctx, p.AppClient, p.Namespace, tr)
 	}
 	job := remote.DeploySandboxJob(tr)
 	got, _, err := remote.EnsureJob(ctx, testCl, job)

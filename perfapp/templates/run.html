@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>{{.Run.ID}}</title>
+  {{if not .Run.Phase.Terminal}}<meta http-equiv="refresh" content="10">{{end}}
   <style>
     body { font-family: sans-serif; margin: 2rem auto; max-width: 960px; }
     table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
@@ -23,6 +24,17 @@
     <thead><tr><th>Step</th><th>Job</th><th>Status</th><th>Details</th></tr></thead>
     <tbody>
       <tr>
+        <td>prepare</td>
+        <td>{{.Run.BuildName}}</td>
+        <td>{{if .Run.BuildPhase}}{{.Run.BuildPhase}}{{else if eq .Run.Phase "Prepare"}}Running{{end}}</td>
+        <td>
+          git {{.Run.GitURI}}@{{.Run.GitRef}}
+          {{if .Run.ImageTag}} · image {{.Run.ImageTag}}{{end}}
+          {{if .Run.BuildReason}} · {{.Run.BuildReason}}{{end}}
+          {{if .Run.BuildMessage}} · {{.Run.BuildMessage}}{{end}}
+        </td>
+      </tr>
+      <tr>
         <td>deploySandbox</td>
         <td>{{.Run.DeploySandbox.Job}}</td>
         <td>{{.Run.DeploySandbox.Status}}</td>
@@ -38,6 +50,10 @@
       {{end}}
     </tbody>
   </table>
+  {{if .Run.BuildLog}}
+  <h2>Build log</h2>
+  <pre>{{.Run.BuildLog}}</pre>
+  {{end}}
   <h2>Results</h2>
   {{if .CSVs}}
     {{range .CSVs}}

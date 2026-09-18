@@ -81,6 +81,73 @@ func TestPollerPrepareCompleteCreatesDeploySandboxOnce(t *testing.T) {
 
 	got := reload(t, appCl, tr.ID)
 	require.Equal(t, run.PhaseDeploySandbox, got.Phase)
+	require.Equal(t, string(buildv1.BuildPhaseComplete), got.BuildPhase)
+}
+
+func TestPollerPrepareRunningRecordsBuildStatus(t *testing.T) {
+	// given
+	appCl := perftest.NewFakeClient(t)
+	testCl := perftest.NewFakeClient(t)
+	tr := &run.TestRun{
+		ID:        "tr-1",
+		Phase:     run.PhasePrepare,
+		BuildName: "perf-job-tr-1",
+		ImageTag:  "tr-1",
+		APIServer: "https://api.one.example.com:6443",
+		SetupRuns: []run.SetupRun{{Users: 1, Default: 1, Username: "setup"}},
+	}
+	seedRun(t, appCl, tr)
+	b := &buildv1.Build{ObjectMeta: metav1.ObjectMeta{Name: tr.BuildName, Namespace: run.TestNamespace}}
+	require.NoError(t, testCl.Create(context.TODO(), b))
+	b.Status.Phase = buildv1.BuildPhaseRunning
+	b.Status.Message = "Fetching application source"
+	require.NoError(t, testCl.Status().Update(context.TODO(), b))
+	p := newPoller(t, appCl, testCl)
+
+	// when
+	require.NoError(t, p.Advance(context.TODO(), tr))
+
+	// then
+	got := reload(t, appCl, tr.ID)
+	require.Equal(t, run.PhasePrepare, got.Phase)
+	require.Equal(t, string(buildv1.BuildPhaseRunning), got.BuildPhase)
+	require.Equal(t, "Fetching application source", got.BuildMessage)
+	list := &batchv1.JobList{}
+	require.NoError(t, testCl.List(context.TODO(), list))
+	require.Empty(t, list.Items)
+}
+
+func TestPollerPrepareFailedRecordsBuildLog(t *testing.T) {
+	// given
+	appCl := perftest.NewFakeClient(t)
+	testCl := perftest.NewFakeClient(t)
+	tr := &run.TestRun{
+		ID:        "tr-1",
+		Phase:     run.PhasePrepare,
+		BuildName: "perf-job-tr-1",
+		ImageTag:  "tr-1",
+		APIServer: "https://api.one.example.com:6443",
+		SetupRuns: []run.SetupRun{{Users: 1, Default: 1, Username: "setup"}},
+	}
+	seedRun(t, appCl, tr)
+	b := &buildv1.Build{ObjectMeta: metav1.ObjectMeta{Name: tr.BuildName, Namespace: run.TestNamespace}}
+	require.NoError(t, testCl.Create(context.TODO(), b))
+	b.Status.Phase = buildv1.BuildPhaseFailed
+	b.Status.Message = "genericbuild failed due to error"
+	b.Status.LogSnippet = "fatal: detected dubious ownership"
+	require.NoError(t, testCl.Status().Update(context.TODO(), b))
+	p := newPoller(t, appCl, testCl)
+
+	// when
+	require.NoError(t, p.Advance(context.TODO(), tr))
+
+	// then
+	got := reload(t, appCl, tr.ID)
+	require.Equal(t, run.PhaseFailed, got.Phase)
+	require.Equal(t, string(buildv1.BuildPhaseFailed), got.BuildPhase)
+	require.Contains(t, got.LastError, "genericbuild failed")
+	require.Contains(t, got.LastError, "dubious ownership")
+	require.Equal(t, "fatal: detected dubious ownership", got.BuildLog)
 }
 
 func TestPollerDeploySuccessCreatesSetup0OnlyIfMissing(t *testing.T) {

@@ -45,10 +45,11 @@ EOF
 cd /opt/toolchain-e2e
 export USE_INSTALLED_KSCTL=true
 export PATH="/usr/local/bin:${PATH}"
+export HOME="${HOME:-/tmp}"
 
 case "${PHASE}" in
   deploy-sandbox)
-    make dev-deploy-latest
+    make dev-deploy-latest USE_INSTALLED_KSCTL=true
     for _ in $(seq 1 180); do
       ready="$(oc get toolchainstatus toolchain-status -n toolchain-host-operator -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
       if [[ "${ready}" == "True" ]]; then

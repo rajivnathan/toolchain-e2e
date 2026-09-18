@@ -84,6 +84,12 @@ type TestRun struct {
 	SetupRunIndex int           `json:"setupRunIndex"`
 	ImageTag      string        `json:"imageTag,omitempty"`
 	BuildName     string        `json:"buildName,omitempty"`
+	BuildPhase    string        `json:"buildPhase,omitempty"`
+	BuildMessage  string        `json:"buildMessage,omitempty"`
+	BuildReason   string        `json:"buildReason,omitempty"`
+	BuildLog      string        `json:"buildLog,omitempty"`
+	GitURI        string        `json:"gitURI,omitempty"`
+	GitRef        string        `json:"gitRef,omitempty"`
 	Workloads     []string      `json:"workloads,omitempty"`
 	Testname      string        `json:"testname,omitempty"`
 	TemplateFile  string        `json:"templateFile,omitempty"`
@@ -137,6 +143,20 @@ func HostLabel(apiServer string) string {
 		return h[:63]
 	}
 	return h
+}
+
+func (tr *TestRun) SourceGitURI() string {
+	if tr != nil && strings.TrimSpace(tr.GitURI) != "" {
+		return strings.TrimSpace(tr.GitURI)
+	}
+	return GitURI
+}
+
+func (tr *TestRun) SourceGitRef() string {
+	if tr != nil && strings.TrimSpace(tr.GitRef) != "" {
+		return strings.TrimSpace(tr.GitRef)
+	}
+	return GitRef
 }
 
 func (tr *TestRun) NeedsTemplate() bool {

@@ -27,13 +27,13 @@ func SetImageStreamReadyTimeout(d time.Duration) {
 	imageStreamReadyTimeout = d
 }
 
-func gitSourceSpec(imageTag string) buildv1.CommonSpec {
+func gitSourceSpec(tr *run.TestRun) buildv1.CommonSpec {
 	return buildv1.CommonSpec{
 		Source: buildv1.BuildSource{
 			Type: buildv1.BuildSourceGit,
 			Git: &buildv1.GitBuildSource{
-				URI: run.GitURI,
-				Ref: run.GitRef,
+				URI: tr.SourceGitURI(),
+				Ref: tr.SourceGitRef(),
 			},
 		},
 		Strategy: buildv1.BuildStrategy{
@@ -45,7 +45,7 @@ func gitSourceSpec(imageTag string) buildv1.CommonSpec {
 		Output: buildv1.BuildOutput{
 			To: &corev1.ObjectReference{
 				Kind: "ImageStreamTag",
-				Name: run.ImageStreamName + ":" + imageTag,
+				Name: run.ImageStreamName + ":" + tr.ImageTag,
 			},
 		},
 	}
@@ -86,10 +86,10 @@ func waitForImageStreamRepository(ctx context.Context, cl client.Client) error {
 	return nil
 }
 
-func EnsureBuildConfig(ctx context.Context, cl client.Client, imageTag string) error {
+func EnsureBuildConfig(ctx context.Context, cl client.Client, tr *run.TestRun) error {
 	bc := &buildv1.BuildConfig{}
 	err := cl.Get(ctx, types.NamespacedName{Namespace: run.TestNamespace, Name: run.BuildConfigName}, bc)
-	spec := gitSourceSpec(imageTag)
+	spec := gitSourceSpec(tr)
 	if apierrors.IsNotFound(err) {
 		bc = &buildv1.BuildConfig{
 			ObjectMeta: metav1.ObjectMeta{
@@ -169,7 +169,7 @@ func Prepare(ctx context.Context, cl client.Client, inst Instantiator, tr *run.T
 	if err := EnsureImageStream(ctx, cl); err != nil {
 		return fmt.Errorf("ensure imagestream: %w", err)
 	}
-	if err := EnsureBuildConfig(ctx, cl, tr.ImageTag); err != nil {
+	if err := EnsureBuildConfig(ctx, cl, tr); err != nil {
 		return fmt.Errorf("ensure buildconfig: %w", err)
 	}
 	b, err := StartBuild(ctx, inst, tr)
@@ -177,5 +177,19 @@ func Prepare(ctx context.Context, cl client.Client, inst Instantiator, tr *run.T
 		return err
 	}
 	tr.BuildName = b.Name
+	ApplyBuildStatus(tr, b)
 	return nil
+}
+
+func ApplyBuildStatus(tr *run.TestRun, b *buildv1.Build) {
+	if tr == nil || b == nil {
+		return
+	}
+	if b.Name != "" {
+		tr.BuildName = b.Name
+	}
+	tr.BuildPhase = string(b.Status.Phase)
+	tr.BuildMessage = b.Status.Message
+	tr.BuildReason = string(b.Status.Reason)
+	tr.BuildLog = b.Status.LogSnippet
 }
