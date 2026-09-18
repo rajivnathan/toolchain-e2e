@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	OpenshiftMonitoringNS = "openshift-monitoring"
-	PrometheusRouteName   = "prometheus-k8s"
+	OpenshiftMonitoringNS    = "openshift-monitoring"
+	PrometheusRouteName      = "prometheus-k8s"
+	ThanosQuerierServiceName = "thanos-querier"
 
 	OLMOperatorNamespace = "openshift-operator-lifecycle-manager"
 	OLMOperatorWorkload  = "olm-operator"
@@ -50,14 +51,14 @@ func (r aggregateResult) avg() float64 {
 }
 
 // New creates a new gatherer with default queries
-func New(t terminal.Terminal, cl client.Client, token string, interval time.Duration) *Gatherer {
+func New(t terminal.Terminal, cl client.Client, token string, interval time.Duration, inClusterMetrics bool) *Gatherer {
 	g := &Gatherer{
 		k8sClient:     cl,
 		queryInterval: interval,
 		term:          t,
 	}
 
-	prometheusClient := GetPrometheusClient(t, cl, token)
+	prometheusClient := GetPrometheusClient(t, cl, token, inClusterMetrics)
 
 	// Add default queries
 	g.AddQueries(

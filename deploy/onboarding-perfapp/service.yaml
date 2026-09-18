@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: perfapp
+  namespace: onboarding-perfapp
+  labels:
+    app: onboarding-perfapp
+spec:
+  selector:
+    app: onboarding-perfapp
+  ports:
+    - name: proxy
+      protocol: TCP
+      port: 4180
+      targetPort: proxy
+  type: ClusterIP

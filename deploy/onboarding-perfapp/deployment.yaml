@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: perfapp
+  namespace: onboarding-perfapp
+  labels:
+    app: onboarding-perfapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: onboarding-perfapp
+  template:
+    metadata:
+      labels:
+        app: onboarding-perfapp
+    spec:
+      serviceAccountName: perfapp
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy@sha256:b1b2021fe8f4004573e8d690dec6c7bb29cc44364572cf8510a05bf3a0ae2ded
+          args:
+            - --http-address=0.0.0.0:4180
+            - --https-address=
+            - --upstream=http://127.0.0.1:8080
+            - --provider=github
+            - --email-domain=*
+            - --cookie-secure=true
+            - --cookie-samesite=lax
+            - --pass-user-headers=true
+            - --set-xauthrequest=true
+            - --skip-provider-button=false
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: client-id
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: cookie-secret
+            - name: OAUTH2_PROXY_GITHUB_ORG
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: github-org
+            - name: OAUTH2_PROXY_GITHUB_TEAM
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: github-team
+          ports:
+            - name: proxy
+              containerPort: 4180
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: proxy
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+        - name: perfapp
+          image: quay.io/QUAY_NAMESPACE/perfapp:GIT_SHA
+          args:
+            - --listen=127.0.0.1:8080
+            - --namespace=onboarding-perfapp
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true

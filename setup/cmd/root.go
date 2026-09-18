@@ -27,6 +27,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/gosuri/uiprogress"
 	"github.com/gosuri/uitable/util/strutil"
@@ -49,6 +50,8 @@ var (
 	idlerTimeout         string
 	token                string
 	workloads            []string
+	resultsConfigMap     string
+	inClusterMetrics     bool
 )
 
 var (
@@ -87,6 +90,8 @@ func Execute() {
 	cmd.Flags().StringVar(&cfg.Testname, "testname", "", "a name that is added as a suffix to the result file names")
 	cmd.Flags().StringVarP(&token, "token", "t", "", "Openshift API token")
 	cmd.Flags().StringSliceVar(&workloads, "workloads", []string{}, "workload namespace:name pairs that should have metrics collected during the setup. all values are comma-separated eg. \"--workloads service-binding-operator:service-binding-operator,rhoas-operator:rhoas-operator\"")
+	cmd.Flags().StringVar(&resultsConfigMap, "results-configmap", "", "name of a ConfigMap in the current namespace to write results.csv (in addition to the local file)")
+	cmd.Flags().BoolVar(&inClusterMetrics, "in-cluster-metrics", false, "look up Service thanos-querier in openshift-monitoring instead of Route prometheus-k8s")
 
 	if err := cmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -247,9 +252,9 @@ func setup(cmd *cobra.Command, _ []string) { // nolint:gocyclo
 	term.Infof("🍿 provisioning users...")
 
 	// init the metrics gatherer
-	metricsInstance := metrics.New(term, cl, token, 5*time.Minute)
+	metricsInstance := metrics.New(term, cl, token, 5*time.Minute, inClusterMetrics)
 
-	prometheusClient := metrics.GetPrometheusClient(term, cl, token)
+	prometheusClient := metrics.GetPrometheusClient(term, cl, token, inClusterMetrics)
 	// add queries for each custom workload
 	for _, w := range workloads {
 		pair := strings.Split(w, ":")
@@ -289,7 +294,14 @@ func setup(cmd *cobra.Command, _ []string) { // nolint:gocyclo
 	stopMetrics := metricsInstance.StartGathering()
 
 	// gather and write results
-	resultsWriter := results.New(term)
+	resultsCMNamespace := ""
+	if resultsConfigMap != "" {
+		resultsCMNamespace, err = currentNamespace(kubeconfig)
+		if err != nil {
+			term.Fatalf(err, "cannot determine namespace for results ConfigMap")
+		}
+	}
+	resultsWriter := results.New(term, cl, resultsConfigMap, resultsCMNamespace)
 
 	outputResults := func() {
 		addAndOutputResults(term, resultsWriter, func() [][]string { return generalResultsInfo }, metricsInstance.ComputeResults)
@@ -488,3 +500,25 @@ func userRoutine(term terminal.Terminal, progressBar *userProgressBar, ua userAc
 }
 
 type userAction func(cl client.Client, curUserNum int, username string)
+
+const saNamespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+
+func currentNamespace(kubeconfigPath string) (string, error) {
+	if b, err := os.ReadFile(saNamespaceFile); err == nil { //nolint:gosec
+		if ns := strings.TrimSpace(string(b)); ns != "" {
+			return ns, nil
+		}
+	}
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if kubeconfigPath != "" {
+		loadingRules.ExplicitPath = kubeconfigPath
+	}
+	ns, _, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{}).Namespace()
+	if err != nil {
+		return "", err
+	}
+	if ns == "" {
+		return "", fmt.Errorf("current namespace is empty")
+	}
+	return ns, nil
+}

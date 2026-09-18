@@ -15,6 +15,7 @@ import (
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/prometheus/client_golang/api"
 	prometheus "github.com/prometheus/client_golang/api/prometheus/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -105,8 +106,8 @@ func (c *httpClient) Do(ctx context.Context, req *http.Request) (*http.Response,
 	return resp, body, err
 }
 
-func GetPrometheusClient(term terminal.Terminal, cl client.Client, token string) prometheus.API {
-	url, err := getPrometheusEndpoint(cl)
+func GetPrometheusClient(term terminal.Terminal, cl client.Client, token string, inClusterMetrics bool) prometheus.API {
+	url, err := getPrometheusEndpoint(cl, inClusterMetrics)
 	if err != nil {
 		term.Fatalf(err, "error creating client: failed to get prometheus endpoint")
 	}
@@ -118,13 +119,47 @@ func GetPrometheusClient(term terminal.Terminal, cl client.Client, token string)
 	return prometheus.NewAPI(httpClient)
 }
 
-func getPrometheusEndpoint(client client.Client) (string, error) {
+func getPrometheusEndpoint(cl client.Client, inClusterMetrics bool) (string, error) {
+	if inClusterMetrics {
+		return thanosQuerierEndpoint(cl)
+	}
+	return prometheusRouteEndpoint(cl)
+}
+
+func prometheusRouteEndpoint(cl client.Client) (string, error) {
 	prometheusRoute := routev1.Route{}
-	if err := client.Get(context.TODO(), types.NamespacedName{
+	if err := cl.Get(context.TODO(), types.NamespacedName{
 		Namespace: OpenshiftMonitoringNS,
 		Name:      PrometheusRouteName,
 	}, &prometheusRoute); err != nil {
 		return "", err
 	}
 	return "https://" + prometheusRoute.Spec.Host, nil
+}
+
+func thanosQuerierEndpoint(cl client.Client) (string, error) {
+	svc := &corev1.Service{}
+	if err := cl.Get(context.TODO(), types.NamespacedName{
+		Namespace: OpenshiftMonitoringNS,
+		Name:      ThanosQuerierServiceName,
+	}, svc); err != nil {
+		return "", err
+	}
+	port, err := thanosQuerierPort(svc)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("https://%s.%s.svc:%d", svc.Name, svc.Namespace, port), nil
+}
+
+func thanosQuerierPort(svc *corev1.Service) (int32, error) {
+	if len(svc.Spec.Ports) == 0 {
+		return 0, fmt.Errorf("service %s/%s has no ports", svc.Namespace, svc.Name)
+	}
+	for _, p := range svc.Spec.Ports {
+		if p.Name == "web" {
+			return p.Port, nil
+		}
+	}
+	return svc.Spec.Ports[0].Port, nil
 }

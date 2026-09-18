@@ -6,9 +6,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	quotav1 "github.com/openshift/api/quota/v1"
+	routev1 "github.com/openshift/api/route/v1"
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake" //nolint: staticcheck // not deprecated anymore: see https://github.com/kubernetes-sigs/controller-runtime/pull/1101
@@ -16,7 +18,7 @@ import (
 
 func NewFakeClient(t commontest.T, initObjs ...client.Object) *commontest.FakeClient {
 	s := scheme.Scheme
-	builder := append(runtime.SchemeBuilder{}, toolchainv1alpha1.AddToScheme, quotav1.Install, operatorsv1alpha1.AddToScheme)
+	builder := append(runtime.SchemeBuilder{}, toolchainv1alpha1.AddToScheme, quotav1.Install, operatorsv1alpha1.AddToScheme, corev1.AddToScheme, routev1.Install)
 	err := builder.AddToScheme(s)
 	require.NoError(t, err)
 	cl := fake.NewClientBuilder().WithScheme(s).WithObjects(initObjs...).Build()

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{.Run.ID}}</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem auto; max-width: 960px; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #ccc; padding: 0.4rem; text-align: left; }
+    nav a { margin-right: 1rem; }
+    .error { color: #a40000; }
+    pre { background: #f4f4f4; padding: 0.75rem; overflow: auto; }
+  </style>
+</head>
+<body>
+  <nav><a href="/">New run</a><a href="/runs">Runs</a></nav>
+  <h1>{{.Run.ID}}</h1>
+  <p>Created by {{.Run.CreatedBy}} at {{.Run.CreatedAt.UTC.Format "2006-01-02 15:04:05 UTC"}}</p>
+  <p>API: {{.Run.APIServer}} · Phase: <strong>{{.Run.Phase}}</strong></p>
+  {{if .Run.LastError}}<p class="error">{{.Run.LastError}}</p>{{end}}
+  <h2>Timeline</h2>
+  <table>
+    <thead><tr><th>Step</th><th>Job</th><th>Status</th><th>Details</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>deploySandbox</td>
+        <td>{{.Run.DeploySandbox.Job}}</td>
+        <td>{{.Run.DeploySandbox.Status}}</td>
+        <td>image {{.Run.ImageTag}} build {{.Run.BuildName}}</td>
+      </tr>
+      {{range $i, $sr := .Run.SetupRuns}}
+      <tr>
+        <td>setupRuns[{{$i}}] {{$sr.Name}}</td>
+        <td>{{$sr.Job}}</td>
+        <td>{{$sr.Status}}</td>
+        <td>users={{$sr.Users}} default={{$sr.Default}} custom={{$sr.Custom}} username={{$sr.Username}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  <h2>Results</h2>
+  {{if .CSVs}}
+    {{range .CSVs}}
+      <h3>{{.Key}} <a href="/runs/{{$.Run.ID}}/results/{{.Index}}">download</a></h3>
+      <pre>{{.Preview}}</pre>
+    {{end}}
+  {{else}}
+    <p>No CSVs copied yet.</p>
+  {{end}}
+</body>
+</html>

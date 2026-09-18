@@ -475,8 +475,8 @@ display-eval:
 ###########################################################
 
 .PHONY: test
-## Run the unit tests in the 'testsupport/...' packages
-test: test-support test-setup
+## Run the unit tests in the 'testsupport', 'setup', and 'perfapp' packages
+test: test-support test-setup test-perfapp
 
 .PHONY: test-support
 test-support:
@@ -485,3 +485,7 @@ test-support:
 .PHONY: test-setup
 test-setup:
 	@go test github.com/codeready-toolchain/toolchain-e2e/setup/... -failfast
+
+.PHONY: test-perfapp
+test-perfapp:
+	@go test github.com/codeready-toolchain/toolchain-e2e/perfapp/... -failfast
