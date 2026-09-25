@@ -67,7 +67,9 @@ objects:
     kind: OdhDashboardConfig
     metadata:
       name: odh-dashboard-config
-      namespace: redhat-ods-applications
+      # OpenShift template processing strips a hardcoded metadata.namespace.
+      # A parameter reference is preserved and resolved to this value.
+      namespace: ${RHOAI_APPLICATIONS_NAMESPACE}
     spec:
       dashboardConfig:
         enablement: true
@@ -142,3 +144,6 @@ objects:
               memory: 16Gi
       templateDisablement: []
       templateOrder: []
+parameters:
+  - name: RHOAI_APPLICATIONS_NAMESPACE
+    value: redhat-ods-applications

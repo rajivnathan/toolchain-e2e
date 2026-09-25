@@ -2,6 +2,7 @@ package templates
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -9,9 +10,9 @@ import (
 
 	applyclientlib "github.com/codeready-toolchain/toolchain-common/pkg/client"
 
-	cfg "github.com/codeready-toolchain/toolchain-e2e/setup/configuration"
 	multierror "github.com/hashicorp/go-multierror"
 	templatev1 "github.com/openshift/api/template/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	k8swait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubectl/pkg/scheme"
@@ -19,6 +20,16 @@ import (
 )
 
 const fieldManager = "e2e-tests"
+
+// applyRetryInterval is the pause between apply attempts while a CRD is still
+// being registered. The first attempt runs immediately.
+var applyRetryInterval = 5 * time.Second
+
+// applyTimeout bounds retries when the target kind is not registered yet.
+// Component CRDs such as OdhDashboardConfig are created only after the operator
+// reconciles DataScienceCluster, which can take several minutes after the
+// operator CSV reaches Succeeded.
+var applyTimeout = 10 * time.Minute
 
 func GetTemplateFromFile(filepath string) (*templatev1.Template, error) {
 	content, err := os.ReadFile(filepath)
@@ -139,14 +150,26 @@ func applyObject(ctx context.Context, applycl *applyclientlib.ServerSideApplyCli
 		}
 	}
 
-	// retry the apply in case it fails due to errors like the following:
-	// unable to create resource of kind: Deployment, version: v1: Operation cannot be fulfilled on clusterresourcequotas.quota.openshift.io "for-zippy-1882-deployments": the object has been modified; please apply your changes to the latest version and try again
-	if err := k8swait.PollUntilContextTimeout(context.TODO(), cfg.DefaultRetryInterval, 30*time.Second, true, func(context context.Context) (bool, error) {
-		if applyErr := applycl.ApplyObject(ctx, obj); applyErr != nil {
-			return false, applyErr
+	// Returning an error from the poll stops it immediately, so only keep going
+	// for "no matches for kind". That happens when a post-install CR is applied
+	// before the operator has created its CRD.
+	var lastErr error
+	err := k8swait.PollUntilContextTimeout(ctx, applyRetryInterval, applyTimeout, true, func(context.Context) (bool, error) {
+		applyErr := applycl.ApplyObject(ctx, obj)
+		if applyErr == nil {
+			return true, nil
 		}
-		return true, nil
-	}); err != nil {
+		if meta.IsNoMatchError(applyErr) {
+			lastErr = applyErr
+			fmt.Printf("kind %s is not registered yet; retrying apply of '%s'\n", obj.GetObjectKind().GroupVersionKind(), obj.GetName())
+			return false, nil
+		}
+		return false, applyErr
+	})
+	if err != nil {
+		if lastErr != nil && errors.Is(err, context.DeadlineExceeded) {
+			err = lastErr
+		}
 		return fmt.Errorf("could not apply resource '%s' in namespace '%s': %w", obj.GetName(), obj.GetNamespace(), err)
 	}
 	return nil

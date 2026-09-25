@@ -31,6 +31,24 @@ func TestApplyPostInstallTemplates(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("dashboard config namespace is preserved", func(t *testing.T) {
+		// OpenShift template processing drops a hardcoded metadata.namespace.
+		// The dashboard config must still land in redhat-ods-applications.
+		objs, err := processTemplateFile(scheme, "post-install/rhoai2_25_10.yaml")
+		require.NoError(t, err)
+
+		var dashboard client.Object
+		for _, obj := range objs {
+			if obj.GetObjectKind().GroupVersionKind().Kind == "OdhDashboardConfig" {
+				dashboard = obj
+			}
+		}
+		require.NotNil(t, dashboard)
+		require.Equal(t, "odh-dashboard-config", dashboard.GetName())
+		require.Equal(t, "redhat-ods-applications", dashboard.GetNamespace())
+		require.Equal(t, "opendatahub.io/v1alpha", dashboard.GetObjectKind().GroupVersionKind().GroupVersion().String())
+	})
+
 	t.Run("failures", func(t *testing.T) {
 		t.Run("invalid template file", func(t *testing.T) {
 			// given
