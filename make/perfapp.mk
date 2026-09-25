@@ -20,6 +20,14 @@ perfapp-image:
 	@echo "building $(PERFAPP_IMAGE) with podman..."
 	podman build --platform $(IMAGE_PLATFORM) -t $(PERFAPP_IMAGE) -f build/perfapp/Dockerfile .
 
+PERF_JOB_BASE_IMAGE ?= quay.io/jeevandroid/perf-job-base
+
+.PHONY: perf-job-base-image
+## Build the perf-job base image (oc, Go). Push it to $(PERF_JOB_BASE_IMAGE) before a Test Run build.
+perf-job-base-image:
+	@echo "building $(PERF_JOB_BASE_IMAGE) with podman..."
+	podman build --platform $(IMAGE_PLATFORM) -t $(PERF_JOB_BASE_IMAGE) -f build/perf-job/Dockerfile.base build/perf-job
+
 .PHONY: perfapp-deploy
 ## Apply deploy/onboarding-perfapp with image quay.io/$(QUAY_NAMESPACE)/perfapp:$(PERFAPP_IMAGE_TAG)
 perfapp-deploy:
