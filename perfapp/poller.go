@@ -53,8 +53,8 @@ func (p *Poller) Advance(ctx context.Context, tr *run.TestRun) error {
 	switch tr.Phase {
 	case run.PhasePrepare:
 		return p.advancePrepare(ctx, testCl, tr)
-	case run.PhaseDeploySandbox, run.PhaseSetupRunning:
-		return p.advanceJob(ctx, testCl, tr)
+	case run.PhaseRunning:
+		return p.advanceStep(ctx, testCl, tr)
 	case run.PhaseSucceeded, run.PhaseFailed:
 		return nil
 	default:
@@ -90,21 +90,21 @@ func (p *Poller) advancePrepare(ctx context.Context, testCl client.Client, tr *r
 	if b.Status.Phase != buildv1.BuildPhaseComplete {
 		return run.UpdateStatus(ctx, p.AppClient, p.Namespace, tr)
 	}
-	job := remote.DeploySandboxJob(tr)
-	got, _, err := remote.EnsureJob(ctx, testCl, job)
-	if err != nil {
-		return p.fail(ctx, tr, fmt.Sprintf("create DeploySandbox Job: %v", err))
+	if len(tr.Steps) == 0 {
+		return p.fail(ctx, tr, "test run has no steps")
 	}
-	tr.DeploySandbox.Job = got.Name
-	tr.DeploySandbox.Status = run.StepRunning
-	tr.Phase = run.PhaseDeploySandbox
-	return run.UpdateStatus(ctx, p.AppClient, p.Namespace, tr)
+	tr.Phase = run.PhaseRunning
+	tr.StepIndex = 0
+	return p.ensureStep(ctx, testCl, tr)
 }
 
-func (p *Poller) advanceJob(ctx context.Context, testCl client.Client, tr *run.TestRun) error {
-	name := run.DeployJobName(tr.ID)
-	if tr.Phase == run.PhaseSetupRunning {
-		name = run.SetupJobName(tr.SetupRunIndex, tr.ID)
+func (p *Poller) advanceStep(ctx context.Context, testCl client.Client, tr *run.TestRun) error {
+	if tr.StepIndex < 0 || tr.StepIndex >= len(tr.Steps) {
+		return p.fail(ctx, tr, fmt.Sprintf("step index %d out of range", tr.StepIndex))
+	}
+	name := tr.Steps[tr.StepIndex].Job
+	if name == "" {
+		name = run.StepJobName(tr.StepIndex, tr.ID)
 	}
 	job, err := remote.GetJob(ctx, testCl, name)
 	if apierrors.IsNotFound(err) {
@@ -120,47 +120,40 @@ func (p *Poller) advanceJob(ctx context.Context, testCl client.Client, tr *run.T
 		p.markCurrentFailed(tr, remote.JobMessage(job))
 		return run.UpdateStatus(ctx, p.AppClient, p.Namespace, tr)
 	}
-
-	if tr.Phase == run.PhaseDeploySandbox {
-		tr.DeploySandbox.Status = run.StepSucceeded
-		tr.SetupRunIndex = 0
-		tr.Phase = run.PhaseSetupRunning
-		return p.ensureSetupJob(ctx, testCl, tr, 0)
+	if tr.Steps[tr.StepIndex].Kind == run.StepSetup {
+		if err := remote.CopyResults(ctx, testCl, p.AppClient, p.Namespace, tr, tr.StepIndex); err != nil {
+			return p.fail(ctx, tr, err.Error())
+		}
 	}
-
-	if err := remote.CopyResults(ctx, testCl, p.AppClient, p.Namespace, tr, tr.SetupRunIndex); err != nil {
-		return p.fail(ctx, tr, err.Error())
-	}
-	tr.SetupRuns[tr.SetupRunIndex].Status = run.StepSucceeded
-	next := tr.SetupRunIndex + 1
-	if next >= len(tr.SetupRuns) {
+	tr.Steps[tr.StepIndex].Status = run.StepSucceeded
+	next := tr.StepIndex + 1
+	if next >= len(tr.Steps) {
 		tr.Phase = run.PhaseSucceeded
 		return run.UpdateStatus(ctx, p.AppClient, p.Namespace, tr)
 	}
-	tr.SetupRunIndex = next
-	return p.ensureSetupJob(ctx, testCl, tr, next)
+	tr.StepIndex = next
+	return p.ensureStep(ctx, testCl, tr)
 }
 
 func (p *Poller) markCurrentFailed(tr *run.TestRun, msg string) {
 	tr.Phase = run.PhaseFailed
 	tr.LastError = msg
-	if tr.DeploySandbox.Job != "" && tr.SetupRunIndex == 0 && tr.DeploySandbox.Status != run.StepSucceeded {
-		tr.DeploySandbox.Status = run.StepFailed
-		return
-	}
-	if tr.SetupRunIndex >= 0 && tr.SetupRunIndex < len(tr.SetupRuns) {
-		tr.SetupRuns[tr.SetupRunIndex].Status = run.StepFailed
+	if tr.StepIndex >= 0 && tr.StepIndex < len(tr.Steps) {
+		tr.Steps[tr.StepIndex].Status = run.StepFailed
 	}
 }
 
-func (p *Poller) ensureSetupJob(ctx context.Context, testCl client.Client, tr *run.TestRun, index int) error {
-	job := remote.SetupJob(tr, index)
+func (p *Poller) ensureStep(ctx context.Context, testCl client.Client, tr *run.TestRun) error {
+	job, err := remote.StepJob(tr, tr.StepIndex)
+	if err != nil {
+		return p.fail(ctx, tr, err.Error())
+	}
 	got, _, err := remote.EnsureJob(ctx, testCl, job)
 	if err != nil {
-		return p.fail(ctx, tr, fmt.Sprintf("create setup Job %d: %v", index, err))
+		return p.fail(ctx, tr, fmt.Sprintf("create step %d Job: %v", tr.StepIndex, err))
 	}
-	tr.SetupRuns[index].Job = got.Name
-	tr.SetupRuns[index].Status = run.StepRunning
+	tr.Steps[tr.StepIndex].Job = got.Name
+	tr.Steps[tr.StepIndex].Status = run.StepRunning
 	return run.UpdateStatus(ctx, p.AppClient, p.Namespace, tr)
 }
 

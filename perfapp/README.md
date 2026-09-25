@@ -55,7 +55,9 @@ The onboarding operator must **already be installed** on the test cluster. The a
 
 ## What Jobs do
 
-Prepare creates a Git-source BuildConfig on the **test** cluster (`sandbox-perf-test`) that builds `build/perf-job/Dockerfile`. That image already contains this repository and a compiled `setup` binary. Phase Jobs pull the tag and run `make dev-deploy-latest` / `setup`. They **do not clone** this repo and **do not** compile `setup` again.
+Prepare creates a Git-source BuildConfig on the **test** cluster (`sandbox-perf-test`) that builds `build/perf-job/Dockerfile`. That Dockerfile starts from `quay.io/jeevandroid/perf-job-base` (`oc` and Go are already installed), installs `ksctl` from `master`, then copies this repository and compiles `setup`. Phase Jobs pull the tag and run `make dev-deploy-latest` / `setup`. They **do not clone** this repo and **do not** compile `setup` again.
+
+Rebuild and push the base image when those tools change: `make perf-job-base-image`, then `podman push quay.io/jeevandroid/perf-job-base`. Override the base with `--build-arg BASE_IMAGE=...`.
 
 ## Throwaway-cluster checklist (not a CI gate)
 
@@ -64,7 +66,7 @@ Use this before the first real Test Run (after phase 0 is on `master`):
 1. `make perf-job-image` locally (`podman build` of `build/perf-job/Dockerfile`).
 2. On a throwaway OpenShift cluster, create namespace `sandbox-perf-test`.
 3. Create a Git-source Docker BuildConfig for `https://github.com/codeready-toolchain/toolchain-e2e` with `dockerfilePath: build/perf-job/Dockerfile`, output ImageStream `perf-job`.
-4. Start a build. Confirm it can reach GitHub, pull UBI, and use `GOPROXY` to compile `setup`.
+4. Start a build. Confirm it can reach GitHub, pull `quay.io/jeevandroid/perf-job-base`, and compile `setup`.
 5. Run a Job with that image, SA `setup-runner` + cluster-admin, args `deploy-sandbox`. Confirm `make dev-deploy-latest` and ToolchainStatus Ready.
 6. Submit a 1-user Test Run from the UI against that cluster. Confirm setup Job args include `--in-cluster-metrics` and `--results-configmap=setup-run-results-0`, and that the CSV appears on the Test Run ConfigMap.
 

@@ -20,8 +20,8 @@ func sampleRun(id, host string, phase Phase) *TestRun {
 		CreatedBy: "alice",
 		APIServer: host,
 		Phase:     phase,
-		SetupRuns: []SetupRun{
-			{Name: "1user", Users: 1, Default: 1, Username: "setup"},
+		Steps: []Step{
+			{Kind: StepSetup, Name: "1user", Users: 1, Default: 1, Username: "setup"},
 		},
 	}
 }
@@ -52,7 +52,7 @@ func TestOverlapSameHostNonTerminal(t *testing.T) {
 	// given
 	cl := perftest.NewFakeClient(t)
 	host := "https://API.one.example.com:6443/"
-	tr := sampleRun("tr-1", host, PhaseSetupRunning)
+	tr := sampleRun("tr-1", host, PhaseRunning)
 	require.NoError(t, Create(context.TODO(), cl, "app", tr, []byte("k")))
 
 	// when
@@ -66,7 +66,7 @@ func TestOverlapSameHostNonTerminal(t *testing.T) {
 func TestOverlapDifferentHostAllowed(t *testing.T) {
 	// given
 	cl := perftest.NewFakeClient(t)
-	tr := sampleRun("tr-1", "https://api.one.example.com:6443", PhaseSetupRunning)
+	tr := sampleRun("tr-1", "https://api.one.example.com:6443", PhaseRunning)
 	require.NoError(t, Create(context.TODO(), cl, "app", tr, []byte("k")))
 
 	// when
@@ -96,16 +96,14 @@ func TestDeterministicJobNames(t *testing.T) {
 	id := "tr-20260917-143000"
 
 	// when
-	deploy := DeployJobName(id)
-	setup0 := SetupJobName(0, id)
-	setup1 := SetupJobName(1, id)
+	step0 := StepJobName(0, id)
+	step1 := StepJobName(1, id)
 	resultsCM := ResultsCMName(0)
 	resultsKey := ResultsDataKey(1)
 
 	// then
-	require.Equal(t, "deploy-sandbox-tr-20260917-143000", deploy)
-	require.Equal(t, "setup-0-tr-20260917-143000", setup0)
-	require.Equal(t, "setup-1-tr-20260917-143000", setup1)
+	require.Equal(t, "step-0-tr-20260917-143000", step0)
+	require.Equal(t, "step-1-tr-20260917-143000", step1)
 	require.Equal(t, "setup-run-results-0", resultsCM)
 	require.Equal(t, "results-1.csv", resultsKey)
 }
@@ -136,7 +134,7 @@ func TestHasResultsCSV(t *testing.T) {
 func TestPutCSV(t *testing.T) {
 	// given
 	cl := perftest.NewFakeClient(t)
-	tr := sampleRun("tr-1", "https://api.one.example.com:6443", PhaseSetupRunning)
+	tr := sampleRun("tr-1", "https://api.one.example.com:6443", PhaseRunning)
 	require.NoError(t, Create(context.TODO(), cl, "app", tr, []byte("k")))
 
 	// when
@@ -163,7 +161,7 @@ func TestHostLabelFitsKubernetes(t *testing.T) {
 func TestUpdateStatusPreservesCSV(t *testing.T) {
 	// given
 	cl := perftest.NewFakeClient(t)
-	tr := sampleRun("tr-1", "https://api.one.example.com:6443", PhaseSetupRunning)
+	tr := sampleRun("tr-1", "https://api.one.example.com:6443", PhaseRunning)
 	require.NoError(t, Create(context.TODO(), cl, "app", tr, []byte("k")))
 	require.NoError(t, PutCSV(context.TODO(), cl, "app", tr.ID, 0, "csv"))
 	tr.Phase = PhaseSucceeded

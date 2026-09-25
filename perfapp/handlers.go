@@ -136,7 +136,10 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var csvs []csvView
-	for i := range tr.SetupRuns {
+	for i, step := range tr.Steps {
+		if step.Kind != run.StepSetup {
+			continue
+		}
 		key := run.ResultsDataKey(i)
 		if raw, ok := cm.Data[key]; ok {
 			csvs = append(csvs, csvView{Index: i, Key: key, Preview: raw})
@@ -187,7 +190,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		redirectError(w, r, err.Error())
 		return
 	}
-	runs, err := parseSetupRuns(r)
+	steps, err := parseSetupSteps(r)
 	if err != nil {
 		redirectError(w, r, err.Error())
 		return
@@ -197,7 +200,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		Kubeconfig:   kube,
 		Template:     templateBytes,
 		TemplateName: templateName,
-		SetupRuns:    runs,
+		Steps:        steps,
 		Workloads:    workloads,
 		Testname:     strings.TrimSpace(r.FormValue("testname")),
 	}
@@ -237,7 +240,7 @@ func (s *Server) createRun(ctx context.Context, createdBy string, in validate.In
 		Workloads:    validated.Workloads,
 		Testname:     validated.Testname,
 		TemplateFile: validated.TemplateName,
-		SetupRuns:    validated.SetupRuns,
+		Steps:        run.Pipeline(validated.Steps),
 		GitURI:       s.Build.URI(),
 		GitRef:       s.Build.Ref(),
 	}
@@ -306,7 +309,7 @@ func readFile(r *http.Request, field string) ([]byte, string, error) {
 	return b, name, nil
 }
 
-func parseSetupRuns(r *http.Request) ([]run.SetupRun, error) {
+func parseSetupSteps(r *http.Request) ([]run.Step, error) {
 	users := r.Form["run.users"]
 	if len(users) == 0 {
 		return nil, errors.New("at least one setup run is required")
@@ -316,13 +319,13 @@ func parseSetupRuns(r *http.Request) ([]run.SetupRun, error) {
 	names := r.Form["run.name"]
 	defaults := r.Form["run.default"]
 	testnames := r.Form["run.testname"]
-	out := make([]run.SetupRun, len(users))
+	out := make([]run.Step, len(users))
 	for i := range users {
 		u, err := strconv.Atoi(users[i])
 		if err != nil {
 			return nil, fmt.Errorf("setup run %d: invalid users", i)
 		}
-		sr := run.SetupRun{Users: u, Username: getIndex(usernames, i), Name: getIndex(names, i), Testname: getIndex(testnames, i)}
+		sr := run.Step{Kind: run.StepSetup, Users: u, Username: getIndex(usernames, i), Name: getIndex(names, i), Testname: getIndex(testnames, i)}
 		if c := getIndex(customs, i); c != "" {
 			sr.Custom, err = strconv.Atoi(c)
 			if err != nil {

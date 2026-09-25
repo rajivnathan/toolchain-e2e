@@ -28,7 +28,7 @@ func init() {
 func TestPrepareRecordsBuildName(t *testing.T) {
 	// given
 	cl := perftest.NewFakeClient(t)
-	tr := &run.TestRun{ID: "tr-1", SetupRuns: []run.SetupRun{{Users: 1, Username: "setup"}}}
+	tr := &run.TestRun{ID: "tr-1", Steps: run.Pipeline([]run.Step{{Users: 1, Username: "setup"}})}
 
 	// when
 	err := Prepare(context.TODO(), cl, perftest.NewFakeInstantiator(cl), tr, nil, "")
@@ -60,10 +60,10 @@ func TestPrepareUsesGitOverride(t *testing.T) {
 	// given
 	cl := perftest.NewFakeClient(t)
 	tr := &run.TestRun{
-		ID:        "tr-fork",
-		GitURI:    "https://github.com/rajivnathan/toolchain-e2e",
-		GitRef:    "my-branch",
-		SetupRuns: []run.SetupRun{{Users: 1, Username: "setup"}},
+		ID:     "tr-fork",
+		GitURI: "https://github.com/rajivnathan/toolchain-e2e",
+		GitRef: "my-branch",
+		Steps:  run.Pipeline([]run.Step{{Users: 1, Username: "setup"}}),
 	}
 
 	// when
@@ -152,7 +152,7 @@ func TestPrepareReusesExistingImageStream(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: run.ImageStreamName, Namespace: run.TestNamespace},
 	}
 	cl := perftest.NewFakeClient(t, existing)
-	tr := &run.TestRun{ID: "tr-2", SetupRuns: []run.SetupRun{{Users: 1, Username: "setup"}}}
+	tr := &run.TestRun{ID: "tr-2", Steps: run.Pipeline([]run.Step{{Users: 1, Username: "setup"}})}
 
 	// when
 	err := Prepare(context.TODO(), cl, perftest.NewFakeInstantiator(cl), tr, nil, "")
@@ -229,39 +229,53 @@ func TestPrepareRejectsActiveJobs(t *testing.T) {
 	require.ErrorContains(t, err, "already has an active setup Job")
 }
 
-func TestSetupJobArgs(t *testing.T) {
+func TestStepJobArgs(t *testing.T) {
 	// given
 	tr := &run.TestRun{
 		ID:           "tr-1",
 		ImageTag:     "tr-1",
 		Workloads:    []string{"ns:name"},
 		TemplateFile: "onboarding.yaml",
-		SetupRuns: []run.SetupRun{
+		Steps: run.Pipeline([]run.Step{
 			{Users: 1, Default: 1, Custom: 0, Username: "setup"},
 			{Users: 2000, Default: 2000, Custom: 2000, Username: "cupcake"},
-		},
+		}),
 	}
+
+	t.Run("deploy sandbox", func(t *testing.T) {
+		// when
+		job, err := StepJob(tr, 0)
+
+		// then
+		require.NoError(t, err)
+		require.Equal(t, []string{"deploy-sandbox"}, job.Spec.Template.Spec.Containers[0].Args)
+		require.Equal(t, string(run.StepDeploySandbox), job.Labels[run.LabelPhase])
+		require.Equal(t, "0", job.Labels[run.LabelStepIndex])
+	})
 
 	t.Run("no template when custom is 0", func(t *testing.T) {
 		// when
-		j0 := SetupJob(tr, 0)
+		job, err := StepJob(tr, 1)
 
 		// then
-		require.Contains(t, j0.Spec.Template.Spec.Containers[0].Args, "--in-cluster-metrics")
-		require.Contains(t, j0.Spec.Template.Spec.Containers[0].Args, "setup-run-results-0")
-		require.NotContains(t, j0.Spec.Template.Spec.Containers[0].Args, "--template")
-		require.Empty(t, j0.Spec.Template.Spec.Volumes)
+		require.NoError(t, err)
+		require.Contains(t, job.Spec.Template.Spec.Containers[0].Args, "--in-cluster-metrics")
+		require.Contains(t, job.Spec.Template.Spec.Containers[0].Args, "setup-run-results-1")
+		require.NotContains(t, job.Spec.Template.Spec.Containers[0].Args, "--template")
+		require.Empty(t, job.Spec.Template.Spec.Volumes)
+		require.Equal(t, "1", job.Labels[run.LabelStepIndex])
 	})
 
 	t.Run("template mount when custom is set", func(t *testing.T) {
 		// when
-		j1 := SetupJob(tr, 1)
+		job, err := StepJob(tr, 2)
 
 		// then
-		require.Contains(t, j1.Spec.Template.Spec.Containers[0].Args, "--template")
-		require.Contains(t, j1.Spec.Template.Spec.Containers[0].Args, "/templates/onboarding.yaml")
-		require.NotEmpty(t, j1.Spec.Template.Spec.Volumes)
-		require.Equal(t, "4Gi", j1.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().String())
+		require.NoError(t, err)
+		require.Contains(t, job.Spec.Template.Spec.Containers[0].Args, "--template")
+		require.Contains(t, job.Spec.Template.Spec.Containers[0].Args, "/templates/onboarding.yaml")
+		require.NotEmpty(t, job.Spec.Template.Spec.Volumes)
+		require.Equal(t, "4Gi", job.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().String())
 	})
 }
 
@@ -269,8 +283,9 @@ func TestEnsureJobDoesNotDuplicate(t *testing.T) {
 	// given
 	cl := perftest.NewFakeClient(t)
 	require.NoError(t, EnsureNamespace(context.TODO(), cl))
-	tr := &run.TestRun{ID: "tr-1", ImageTag: "tr-1"}
-	job := DeploySandboxJob(tr)
+	tr := &run.TestRun{ID: "tr-1", ImageTag: "tr-1", Steps: run.Pipeline(nil)}
+	job, err := StepJob(tr, 0)
+	require.NoError(t, err)
 
 	// when
 	got, created, err := EnsureJob(context.TODO(), cl, job)
@@ -281,7 +296,9 @@ func TestEnsureJobDoesNotDuplicate(t *testing.T) {
 	require.Equal(t, job.Name, got.Name)
 
 	// when
-	got, created, err = EnsureJob(context.TODO(), cl, DeploySandboxJob(tr))
+	again, err := StepJob(tr, 0)
+	require.NoError(t, err)
+	got, created, err = EnsureJob(context.TODO(), cl, again)
 
 	// then
 	require.NoError(t, err)

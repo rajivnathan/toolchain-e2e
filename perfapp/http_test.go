@@ -140,10 +140,10 @@ func TestPostRunOverlapConflict(t *testing.T) {
 	appCl := perftest.NewFakeClient(t)
 	existing := &run.TestRun{
 		ID:        "tr-existing",
-		Phase:     run.PhaseSetupRunning,
+		Phase:     run.PhaseRunning,
 		APIServer: "https://api.example.com:6443",
 		CreatedBy: "bob",
-		SetupRuns: []run.SetupRun{{Users: 1, Default: 1, Username: "setup"}},
+		Steps:     []run.Step{{Kind: run.StepSetup, Users: 1, Default: 1, Username: "setup"}},
 	}
 	require.NoError(t, run.Create(context.TODO(), appCl, appNS, existing, []byte("k")))
 
@@ -179,7 +179,7 @@ func TestCreateRunPrepareFailureSetsFailed(t *testing.T) {
 	}
 	in := validate.Input{
 		Kubeconfig: fakeKubeconfig("https://api.example.com:6443"),
-		SetupRuns:  []run.SetupRun{{Users: 1, Default: 1, Username: "setup"}},
+		Steps:      []run.Step{{Kind: run.StepSetup, Users: 1, Default: 1, Username: "setup"}},
 	}
 
 	// when
@@ -203,9 +203,9 @@ func TestCreateRunSuccessRecordsBuild(t *testing.T) {
 	srv := newHTTPServer(t, appCl, testCl)
 	in := validate.Input{
 		Kubeconfig: fakeKubeconfig("https://api.example.com:6443"),
-		SetupRuns: []run.SetupRun{
-			{Name: "1user", Users: 1, Default: 1, Username: "setup"},
-			{Name: "2k", Users: 2000, Default: 2000, Username: "cupcake"},
+		Steps: []run.Step{
+			{Kind: run.StepSetup, Name: "1user", Users: 1, Default: 1, Username: "setup"},
+			{Kind: run.StepSetup, Name: "2k", Users: 2000, Default: 2000, Username: "cupcake"},
 		},
 	}
 
@@ -218,6 +218,10 @@ func TestCreateRunSuccessRecordsBuild(t *testing.T) {
 	got, _, err := run.Get(context.TODO(), appCl, appNS, id)
 	require.NoError(t, err)
 	require.Equal(t, run.PhasePrepare, got.Phase)
+	require.Equal(t, run.StepDeploySandbox, got.Steps[0].Kind)
+	require.Equal(t, run.StepSetup, got.Steps[1].Kind)
+	require.Equal(t, "1user", got.Steps[1].Name)
+	require.Equal(t, run.StepSetup, got.Steps[2].Kind)
 	require.Equal(t, "perf-job-1", got.BuildName)
 	require.Equal(t, id, got.ImageTag)
 	require.Equal(t, "alice", got.CreatedBy)
@@ -234,7 +238,7 @@ func TestCreateRunGitOverride(t *testing.T) {
 	srv.Build.GitRef = "my-branch"
 	in := validate.Input{
 		Kubeconfig: fakeKubeconfig("https://api.example.com:6443"),
-		SetupRuns:  []run.SetupRun{{Users: 1, Default: 1, Username: "setup"}},
+		Steps:      []run.Step{{Kind: run.StepSetup, Users: 1, Default: 1, Username: "setup"}},
 	}
 
 	// when
@@ -257,18 +261,18 @@ func TestListAndDetailFromConfigMaps(t *testing.T) {
 	// given
 	appCl := perftest.NewFakeClient(t)
 	tr := &run.TestRun{
-		ID:            "tr-1",
-		CreatedAt:     time.Date(2026, 9, 17, 14, 30, 0, 0, time.UTC),
-		CreatedBy:     "alice",
-		APIServer:     "https://api.example.com:6443",
-		Phase:         run.PhaseSucceeded,
-		DeploySandbox: run.DeploySandbox{Job: "deploy-sandbox-tr-1", Status: run.StepSucceeded},
-		SetupRuns: []run.SetupRun{
-			{Name: "1user", Users: 1, Default: 1, Username: "setup", Job: "setup-0-tr-1", Status: run.StepSucceeded},
+		ID:        "tr-1",
+		CreatedAt: time.Date(2026, 9, 17, 14, 30, 0, 0, time.UTC),
+		CreatedBy: "alice",
+		APIServer: "https://api.example.com:6443",
+		Phase:     run.PhaseSucceeded,
+		Steps: []run.Step{
+			{Kind: run.StepDeploySandbox, Name: "deploy-sandbox", Job: "step-0-tr-1", Status: run.StepSucceeded},
+			{Kind: run.StepSetup, Name: "1user", Users: 1, Default: 1, Username: "setup", Job: "step-1-tr-1", Status: run.StepSucceeded},
 		},
 	}
 	require.NoError(t, run.Create(context.TODO(), appCl, appNS, tr, []byte("k")))
-	require.NoError(t, run.PutCSV(context.TODO(), appCl, appNS, tr.ID, 0, "Item,Value\nUsers,1\n"))
+	require.NoError(t, run.PutCSV(context.TODO(), appCl, appNS, tr.ID, 1, "Item,Value\nUsers,1\n"))
 	srv := newHTTPServer(t, appCl, perftest.NewFakeClient(t))
 
 	t.Run("list", func(t *testing.T) {
@@ -295,9 +299,9 @@ func TestListAndDetailFromConfigMaps(t *testing.T) {
 		// then
 		require.Equal(t, http.StatusOK, rec.Code)
 		require.Contains(t, rec.Body.String(), "prepare")
-		require.Contains(t, rec.Body.String(), "deploySandbox")
-		require.Contains(t, rec.Body.String(), "setupRuns[0]")
-		require.Contains(t, rec.Body.String(), "results-0.csv")
+		require.Contains(t, rec.Body.String(), "deploy-sandbox")
+		require.Contains(t, rec.Body.String(), "setup 1user")
+		require.Contains(t, rec.Body.String(), "results-1.csv")
 		require.Contains(t, rec.Body.String(), "Users,1")
 	})
 
@@ -306,7 +310,7 @@ func TestListAndDetailFromConfigMaps(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		// when
-		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/tr-1/results/0", nil))
+		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/tr-1/results/1", nil))
 
 		// then
 		require.Equal(t, http.StatusOK, rec.Code)
@@ -330,7 +334,7 @@ func TestPrepareRunShowsBuildStatus(t *testing.T) {
 		GitURI:       run.GitURI,
 		GitRef:       run.GitRef,
 		ImageTag:     "tr-prepare",
-		SetupRuns:    []run.SetupRun{{Name: "1user", Users: 1, Default: 1, Username: "setup"}},
+		Steps:        run.Pipeline([]run.Step{{Kind: run.StepSetup, Name: "1user", Users: 1, Default: 1, Username: "setup"}}),
 	}
 	require.NoError(t, run.Create(context.TODO(), appCl, appNS, tr, []byte("k")))
 	srv := newHTTPServer(t, appCl, perftest.NewFakeClient(t))
@@ -428,8 +432,14 @@ func TestPerfJobImageAllowsGitSafeDirectory(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
+	require.Contains(t, string(b), "ARG BASE_IMAGE=quay.io/jeevandroid/perf-job-base")
+	require.Contains(t, string(b), "GOBIN=/usr/local/bin go install github.com/kubesaw/ksctl/cmd/ksctl@master")
 	require.Contains(t, string(b), "git config --system --add safe.directory /opt/toolchain-e2e")
 	require.Contains(t, string(b), "chmod -R g=u /opt/toolchain-e2e /tmp/go /tmp/.cache")
+
+	base, err := os.ReadFile("../build/perf-job/Dockerfile.base")
+	require.NoError(t, err)
+	require.NotContains(t, string(base), "go install github.com/kubesaw/ksctl")
 }
 
 func TestKsctlMakefileHonorsInstalledFlag(t *testing.T) {

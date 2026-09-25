@@ -23,7 +23,7 @@ type Input struct {
 	Kubeconfig   []byte
 	Template     []byte
 	TemplateName string
-	SetupRuns    []run.SetupRun
+	Steps        []run.Step
 	Workloads    []string
 	Testname     string
 }
@@ -32,7 +32,7 @@ type Result struct {
 	RESTConfig   *rest.Config
 	Client       client.Client
 	APIServer    string
-	SetupRuns    []run.SetupRun
+	Steps        []run.Step
 	Template     []byte
 	TemplateName string
 	Workloads    []string
@@ -60,14 +60,14 @@ func Submit(ctx context.Context, in Input, newClient ClientFactory) (*Result, er
 	if err != nil {
 		return nil, err
 	}
-	runs, err := NormalizeSetupRuns(in.SetupRuns)
+	steps, err := NormalizeSetupSteps(in.Steps)
 	if err != nil {
 		return nil, err
 	}
 	if err := Workloads(in.Workloads); err != nil {
 		return nil, err
 	}
-	templateName, err := Template(runs, in.Template, in.TemplateName)
+	templateName, err := Template(steps, in.Template, in.TemplateName)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func Submit(ctx context.Context, in Input, newClient ClientFactory) (*Result, er
 		RESTConfig:   restCfg,
 		Client:       cl,
 		APIServer:    run.NormalizeAPIServer(restCfg.Host),
-		SetupRuns:    runs,
+		Steps:        steps,
 		Template:     in.Template,
 		TemplateName: templateName,
 		Workloads:    in.Workloads,
@@ -114,13 +114,13 @@ func ClusterAdmin(ctx context.Context, cl client.Client) error {
 	return nil
 }
 
-func NormalizeSetupRuns(runs []run.SetupRun) ([]run.SetupRun, error) {
-	if len(runs) == 0 {
+func NormalizeSetupSteps(steps []run.Step) ([]run.Step, error) {
+	if len(steps) == 0 {
 		return nil, errors.New("at least one setup run is required")
 	}
 	seen := map[string]int{}
-	out := make([]run.SetupRun, len(runs))
-	for i, sr := range runs {
+	out := make([]run.Step, len(steps))
+	for i, sr := range steps {
 		if sr.Users < 1 {
 			return nil, fmt.Errorf("setup run %d: users must be at least 1", i)
 		}
@@ -141,14 +141,15 @@ func NormalizeSetupRuns(runs []run.SetupRun) ([]run.SetupRun, error) {
 		if transformed != sr.Username {
 			return nil, fmt.Errorf("setup run %d: username %q would be transformed to %q by Dev Sandbox username restrictions", i, sr.Username, transformed)
 		}
+		sr.Kind = run.StepSetup
 		out[i] = sr
 	}
 	return out, nil
 }
 
-func Template(runs []run.SetupRun, content []byte, name string) (string, error) {
+func Template(steps []run.Step, content []byte, name string) (string, error) {
 	needed := false
-	for _, sr := range runs {
+	for _, sr := range steps {
 		if sr.Custom > 0 {
 			needed = true
 			break

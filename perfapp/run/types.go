@@ -10,12 +10,12 @@ import (
 )
 
 const (
-	AppLabelValue = "onboarding-perfapp"
-	LabelApp      = "app"
-	LabelTestRun  = "testrun"
-	LabelTestHost = "testhost"
-	LabelPhase    = "phase"
-	LabelSetupIdx = "setup-index"
+	AppLabelValue  = "onboarding-perfapp"
+	LabelApp       = "app"
+	LabelTestRun   = "testrun"
+	LabelTestHost  = "testhost"
+	LabelPhase     = "phase"
+	LabelStepIndex = "step-index"
 
 	JobAppValue = "setup-run"
 
@@ -39,11 +39,10 @@ const (
 type Phase string
 
 const (
-	PhasePrepare       Phase = "Prepare"
-	PhaseDeploySandbox Phase = "DeploySandbox"
-	PhaseSetupRunning  Phase = "SetupRunning"
-	PhaseSucceeded     Phase = "Succeeded"
-	PhaseFailed        Phase = "Failed"
+	PhasePrepare   Phase = "Prepare"
+	PhaseRunning   Phase = "Running"
+	PhaseSucceeded Phase = "Succeeded"
+	PhaseFailed    Phase = "Failed"
 )
 
 func (p Phase) Terminal() bool {
@@ -59,43 +58,47 @@ const (
 	StepFailed    StepStatus = "Failed"
 )
 
-type DeploySandbox struct {
-	Job    string     `json:"job"`
-	Status StepStatus `json:"status"`
-}
+type StepKind string
 
-type SetupRun struct {
+const (
+	StepDeploySandbox StepKind = "deploy-sandbox"
+	StepSetup         StepKind = "setup"
+)
+
+// Step is one Job in a Test Run. Kind selects how the Job is built.
+// Users, Default, Custom, Username, and Testname apply to setup steps.
+type Step struct {
+	Kind     StepKind   `json:"kind"`
 	Name     string     `json:"name,omitempty"`
-	Users    int        `json:"users"`
-	Default  int        `json:"default"`
-	Custom   int        `json:"custom"`
-	Username string     `json:"username"`
+	Users    int        `json:"users,omitempty"`
+	Default  int        `json:"default,omitempty"`
+	Custom   int        `json:"custom,omitempty"`
+	Username string     `json:"username,omitempty"`
 	Testname string     `json:"testname,omitempty"`
 	Job      string     `json:"job,omitempty"`
 	Status   StepStatus `json:"status,omitempty"`
 }
 
 type TestRun struct {
-	ID            string        `json:"id"`
-	CreatedAt     time.Time     `json:"createdAt"`
-	CreatedBy     string        `json:"createdBy"`
-	APIServer     string        `json:"apiServer"`
-	Phase         Phase         `json:"phase"`
-	SetupRunIndex int           `json:"setupRunIndex"`
-	ImageTag      string        `json:"imageTag,omitempty"`
-	BuildName     string        `json:"buildName,omitempty"`
-	BuildPhase    string        `json:"buildPhase,omitempty"`
-	BuildMessage  string        `json:"buildMessage,omitempty"`
-	BuildReason   string        `json:"buildReason,omitempty"`
-	BuildLog      string        `json:"buildLog,omitempty"`
-	GitURI        string        `json:"gitURI,omitempty"`
-	GitRef        string        `json:"gitRef,omitempty"`
-	Workloads     []string      `json:"workloads,omitempty"`
-	Testname      string        `json:"testname,omitempty"`
-	TemplateFile  string        `json:"templateFile,omitempty"`
-	DeploySandbox DeploySandbox `json:"deploySandbox"`
-	SetupRuns     []SetupRun    `json:"setupRuns"`
-	LastError     string        `json:"lastError,omitempty"`
+	ID           string    `json:"id"`
+	CreatedAt    time.Time `json:"createdAt"`
+	CreatedBy    string    `json:"createdBy"`
+	APIServer    string    `json:"apiServer"`
+	Phase        Phase     `json:"phase"`
+	StepIndex    int       `json:"stepIndex"`
+	ImageTag     string    `json:"imageTag,omitempty"`
+	BuildName    string    `json:"buildName,omitempty"`
+	BuildPhase   string    `json:"buildPhase,omitempty"`
+	BuildMessage string    `json:"buildMessage,omitempty"`
+	BuildReason  string    `json:"buildReason,omitempty"`
+	BuildLog     string    `json:"buildLog,omitempty"`
+	GitURI       string    `json:"gitURI,omitempty"`
+	GitRef       string    `json:"gitRef,omitempty"`
+	Workloads    []string  `json:"workloads,omitempty"`
+	Testname     string    `json:"testname,omitempty"`
+	TemplateFile string    `json:"templateFile,omitempty"`
+	Steps        []Step    `json:"steps,omitempty"`
+	LastError    string    `json:"lastError,omitempty"`
 }
 
 func NewID(t time.Time) string {
@@ -106,10 +109,21 @@ func ConfigMapName(id string) string { return "testrun-" + id }
 
 func SecretName(id string) string { return "testrun-" + id + "-kubeconfig" }
 
-func DeployJobName(id string) string { return "deploy-sandbox-" + id }
+func StepJobName(index int, id string) string {
+	return fmt.Sprintf("step-%d-%s", index, id)
+}
 
-func SetupJobName(index int, id string) string {
-	return fmt.Sprintf("setup-%d-%s", index, id)
+// Pipeline prepends the sandbox deploy step to the setup steps from the form.
+func Pipeline(setups []Step) []Step {
+	steps := make([]Step, 0, len(setups)+1)
+	steps = append(steps, Step{Kind: StepDeploySandbox, Name: "deploy-sandbox"})
+	for _, s := range setups {
+		if s.Kind == "" {
+			s.Kind = StepSetup
+		}
+		steps = append(steps, s)
+	}
+	return steps
 }
 
 func ResultsCMName(index int) string {
@@ -160,8 +174,8 @@ func (tr *TestRun) SourceGitRef() string {
 }
 
 func (tr *TestRun) NeedsTemplate() bool {
-	for _, sr := range tr.SetupRuns {
-		if sr.Custom > 0 {
+	for _, step := range tr.Steps {
+		if step.Kind == StepSetup && step.Custom > 0 {
 			return true
 		}
 	}

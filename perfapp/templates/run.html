@@ -34,18 +34,12 @@
           {{if .Run.BuildMessage}} · {{.Run.BuildMessage}}{{end}}
         </td>
       </tr>
+      {{range $i, $step := .Run.Steps}}
       <tr>
-        <td>deploySandbox</td>
-        <td>{{.Run.DeploySandbox.Job}}</td>
-        <td>{{.Run.DeploySandbox.Status}}</td>
-        <td>image {{.Run.ImageTag}} build {{.Run.BuildName}}</td>
-      </tr>
-      {{range $i, $sr := .Run.SetupRuns}}
-      <tr>
-        <td>setupRuns[{{$i}}] {{$sr.Name}}</td>
-        <td>{{$sr.Job}}</td>
-        <td>{{$sr.Status}}</td>
-        <td>users={{$sr.Users}} default={{$sr.Default}} custom={{$sr.Custom}} username={{$sr.Username}}</td>
+        <td>{{$step.Kind}}{{if $step.Name}} {{$step.Name}}{{end}}</td>
+        <td>{{$step.Job}}</td>
+        <td>{{$step.Status}}</td>
+        <td>{{if eq $step.Kind "setup"}}users={{$step.Users}} default={{$step.Default}} custom={{$step.Custom}} username={{$step.Username}}{{else if eq $step.Kind "deploy-sandbox"}}image {{$.Run.ImageTag}} build {{$.Run.BuildName}}{{end}}</td>
       </tr>
       {{end}}
     </tbody>

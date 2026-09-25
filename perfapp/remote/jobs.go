@@ -90,18 +90,23 @@ func JobMessage(job *batchv1.Job) string {
 	return ""
 }
 
-func DeploySandboxJob(tr *run.TestRun) *batchv1.Job {
-	return phaseJob(tr, run.DeployJobName(tr.ID), run.PhaseDeploySandbox, -1, []string{"deploy-sandbox"}, false, jobResources(0, true))
+func StepJob(tr *run.TestRun, index int) (*batchv1.Job, error) {
+	if tr == nil || index < 0 || index >= len(tr.Steps) {
+		return nil, fmt.Errorf("step index %d out of range", index)
+	}
+	step := tr.Steps[index]
+	switch step.Kind {
+	case run.StepDeploySandbox:
+		return phaseJob(tr, run.StepJobName(index, tr.ID), step.Kind, index, []string{string(step.Kind)}, false, jobResources(0, true)), nil
+	case run.StepSetup:
+		mount := step.Custom > 0 && tr.TemplateFile != ""
+		return phaseJob(tr, run.StepJobName(index, tr.ID), step.Kind, index, setupArgs(tr, index, step), mount, jobResources(step.Users, false)), nil
+	default:
+		return nil, fmt.Errorf("unknown step kind %q", step.Kind)
+	}
 }
 
-func SetupJob(tr *run.TestRun, index int) *batchv1.Job {
-	sr := tr.SetupRuns[index]
-	args := setupArgs(tr, index, sr)
-	mount := sr.Custom > 0 && tr.TemplateFile != ""
-	return phaseJob(tr, run.SetupJobName(index, tr.ID), run.PhaseSetupRunning, index, args, mount, jobResources(sr.Users, false))
-}
-
-func setupArgs(tr *run.TestRun, index int, sr run.SetupRun) []string {
+func setupArgs(tr *run.TestRun, index int, sr run.Step) []string {
 	args := []string{
 		"setup",
 		"--users", strconv.Itoa(sr.Users),
@@ -128,14 +133,12 @@ func setupArgs(tr *run.TestRun, index int, sr run.SetupRun) []string {
 	return args
 }
 
-func phaseJob(tr *run.TestRun, name string, phase run.Phase, index int, args []string, mountTemplate bool, resources corev1.ResourceRequirements) *batchv1.Job {
+func phaseJob(tr *run.TestRun, name string, kind run.StepKind, index int, args []string, mountTemplate bool, resources corev1.ResourceRequirements) *batchv1.Job {
 	labels := map[string]string{
-		run.LabelApp:     run.JobAppValue,
-		run.LabelTestRun: tr.ID,
-		run.LabelPhase:   string(phase),
-	}
-	if index >= 0 {
-		labels[run.LabelSetupIdx] = strconv.Itoa(index)
+		run.LabelApp:       run.JobAppValue,
+		run.LabelTestRun:   tr.ID,
+		run.LabelPhase:     string(kind),
+		run.LabelStepIndex: strconv.Itoa(index),
 	}
 	container := corev1.Container{
 		Name:            "job",

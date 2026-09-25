@@ -53,7 +53,14 @@ func setJobCondition(t *testing.T, cl client.Client, name string, ctype batchv1.
 	require.NoError(t, cl.Status().Update(context.TODO(), job))
 }
 
-func TestPollerPrepareCompleteCreatesDeploySandboxOnce(t *testing.T) {
+func mustStepJob(t *testing.T, tr *run.TestRun, index int) *batchv1.Job {
+	t.Helper()
+	job, err := remote.StepJob(tr, index)
+	require.NoError(t, err)
+	return job
+}
+
+func TestPollerPrepareCompleteCreatesFirstStepOnce(t *testing.T) {
 	// given
 	appCl := perftest.NewFakeClient(t)
 	testCl := perftest.NewFakeClient(t)
@@ -63,7 +70,10 @@ func TestPollerPrepareCompleteCreatesDeploySandboxOnce(t *testing.T) {
 		BuildName: "perf-job-tr-1",
 		ImageTag:  "tr-1",
 		APIServer: "https://api.one.example.com:6443",
-		SetupRuns: []run.SetupRun{{Users: 1, Default: 1, Username: "setup"}, {Users: 2, Default: 2, Username: "cupcake"}},
+		Steps: run.Pipeline([]run.Step{
+			{Users: 1, Default: 1, Username: "setup"},
+			{Users: 2, Default: 2, Username: "cupcake"},
+		}),
 	}
 	seedRun(t, appCl, tr)
 	completeBuild(t, testCl, tr.BuildName)
@@ -77,10 +87,12 @@ func TestPollerPrepareCompleteCreatesDeploySandboxOnce(t *testing.T) {
 	list := &batchv1.JobList{}
 	require.NoError(t, testCl.List(context.TODO(), list))
 	require.Len(t, list.Items, 1)
-	require.Equal(t, run.DeployJobName(tr.ID), list.Items[0].Name)
+	require.Equal(t, run.StepJobName(0, tr.ID), list.Items[0].Name)
 
 	got := reload(t, appCl, tr.ID)
-	require.Equal(t, run.PhaseDeploySandbox, got.Phase)
+	require.Equal(t, run.PhaseRunning, got.Phase)
+	require.Equal(t, 0, got.StepIndex)
+	require.Equal(t, run.StepRunning, got.Steps[0].Status)
 	require.Equal(t, string(buildv1.BuildPhaseComplete), got.BuildPhase)
 }
 
@@ -94,7 +106,7 @@ func TestPollerPrepareRunningRecordsBuildStatus(t *testing.T) {
 		BuildName: "perf-job-tr-1",
 		ImageTag:  "tr-1",
 		APIServer: "https://api.one.example.com:6443",
-		SetupRuns: []run.SetupRun{{Users: 1, Default: 1, Username: "setup"}},
+		Steps:     run.Pipeline([]run.Step{{Users: 1, Default: 1, Username: "setup"}}),
 	}
 	seedRun(t, appCl, tr)
 	b := &buildv1.Build{ObjectMeta: metav1.ObjectMeta{Name: tr.BuildName, Namespace: run.TestNamespace}}
@@ -127,7 +139,7 @@ func TestPollerPrepareFailedRecordsBuildLog(t *testing.T) {
 		BuildName: "perf-job-tr-1",
 		ImageTag:  "tr-1",
 		APIServer: "https://api.one.example.com:6443",
-		SetupRuns: []run.SetupRun{{Users: 1, Default: 1, Username: "setup"}},
+		Steps:     run.Pipeline([]run.Step{{Users: 1, Default: 1, Username: "setup"}}),
 	}
 	seedRun(t, appCl, tr)
 	b := &buildv1.Build{ObjectMeta: metav1.ObjectMeta{Name: tr.BuildName, Namespace: run.TestNamespace}}
@@ -150,22 +162,26 @@ func TestPollerPrepareFailedRecordsBuildLog(t *testing.T) {
 	require.Equal(t, "fatal: detected dubious ownership", got.BuildLog)
 }
 
-func TestPollerDeploySuccessCreatesSetup0OnlyIfMissing(t *testing.T) {
+func TestPollerDeploySuccessCreatesNextStepOnce(t *testing.T) {
 	// given
 	appCl := perftest.NewFakeClient(t)
 	testCl := perftest.NewFakeClient(t)
 	tr := &run.TestRun{
-		ID:            "tr-1",
-		Phase:         run.PhaseDeploySandbox,
-		BuildName:     "perf-job-tr-1",
-		ImageTag:      "tr-1",
-		APIServer:     "https://api.one.example.com:6443",
-		DeploySandbox: run.DeploySandbox{Job: run.DeployJobName("tr-1"), Status: run.StepRunning},
-		SetupRuns:     []run.SetupRun{{Users: 1, Default: 1, Username: "setup"}, {Users: 2, Default: 2, Username: "cupcake"}},
+		ID:        "tr-1",
+		Phase:     run.PhaseRunning,
+		StepIndex: 0,
+		BuildName: "perf-job-tr-1",
+		ImageTag:  "tr-1",
+		APIServer: "https://api.one.example.com:6443",
+		Steps: []run.Step{
+			{Kind: run.StepDeploySandbox, Name: "deploy-sandbox", Job: run.StepJobName(0, "tr-1"), Status: run.StepRunning},
+			{Kind: run.StepSetup, Users: 1, Default: 1, Username: "setup"},
+			{Kind: run.StepSetup, Users: 2, Default: 2, Username: "cupcake"},
+		},
 	}
 	seedRun(t, appCl, tr)
-	require.NoError(t, testCl.Create(context.TODO(), remote.DeploySandboxJob(tr)))
-	setJobCondition(t, testCl, run.DeployJobName(tr.ID), batchv1.JobComplete)
+	require.NoError(t, testCl.Create(context.TODO(), mustStepJob(t, tr, 0)))
+	setJobCondition(t, testCl, run.StepJobName(0, tr.ID), batchv1.JobComplete)
 	p := newPoller(t, appCl, testCl)
 
 	// when
@@ -174,12 +190,14 @@ func TestPollerDeploySuccessCreatesSetup0OnlyIfMissing(t *testing.T) {
 
 	// then
 	got := reload(t, appCl, tr.ID)
-	require.Equal(t, run.PhaseSetupRunning, got.Phase)
-	require.Equal(t, 0, got.SetupRunIndex)
-	require.Equal(t, run.SetupJobName(0, tr.ID), got.SetupRuns[0].Job)
+	require.Equal(t, run.PhaseRunning, got.Phase)
+	require.Equal(t, 1, got.StepIndex)
+	require.Equal(t, run.StepSucceeded, got.Steps[0].Status)
+	require.Equal(t, run.StepJobName(1, tr.ID), got.Steps[1].Job)
+	require.Equal(t, run.StepRunning, got.Steps[1].Status)
 
 	list := &batchv1.JobList{}
-	require.NoError(t, testCl.List(context.TODO(), list, client.MatchingLabels{run.LabelSetupIdx: "0"}))
+	require.NoError(t, testCl.List(context.TODO(), list, client.MatchingLabels{run.LabelStepIndex: "1"}))
 	require.Len(t, list.Items, 1)
 }
 
@@ -188,20 +206,20 @@ func TestPollerSetup0FailedDoesNotCreateSetup1(t *testing.T) {
 	appCl := perftest.NewFakeClient(t)
 	testCl := perftest.NewFakeClient(t)
 	tr := &run.TestRun{
-		ID:            "tr-1",
-		Phase:         run.PhaseSetupRunning,
-		SetupRunIndex: 0,
-		ImageTag:      "tr-1",
-		APIServer:     "https://api.one.example.com:6443",
-		DeploySandbox: run.DeploySandbox{Job: run.DeployJobName("tr-1"), Status: run.StepSucceeded},
-		SetupRuns: []run.SetupRun{
-			{Users: 1, Default: 1, Username: "setup", Job: run.SetupJobName(0, "tr-1"), Status: run.StepRunning},
-			{Users: 2, Default: 2, Username: "cupcake"},
+		ID:        "tr-1",
+		Phase:     run.PhaseRunning,
+		StepIndex: 1,
+		ImageTag:  "tr-1",
+		APIServer: "https://api.one.example.com:6443",
+		Steps: []run.Step{
+			{Kind: run.StepDeploySandbox, Job: run.StepJobName(0, "tr-1"), Status: run.StepSucceeded},
+			{Kind: run.StepSetup, Users: 1, Default: 1, Username: "setup", Job: run.StepJobName(1, "tr-1"), Status: run.StepRunning},
+			{Kind: run.StepSetup, Users: 2, Default: 2, Username: "cupcake"},
 		},
 	}
 	seedRun(t, appCl, tr)
-	require.NoError(t, testCl.Create(context.TODO(), remote.SetupJob(tr, 0)))
-	setJobCondition(t, testCl, run.SetupJobName(0, tr.ID), batchv1.JobFailed)
+	require.NoError(t, testCl.Create(context.TODO(), mustStepJob(t, tr, 1)))
+	setJobCondition(t, testCl, run.StepJobName(1, tr.ID), batchv1.JobFailed)
 	p := newPoller(t, appCl, testCl)
 
 	// when
@@ -210,10 +228,10 @@ func TestPollerSetup0FailedDoesNotCreateSetup1(t *testing.T) {
 	// then
 	got := reload(t, appCl, tr.ID)
 	require.Equal(t, run.PhaseFailed, got.Phase)
-	require.Equal(t, run.StepFailed, got.SetupRuns[0].Status)
-	require.Empty(t, got.SetupRuns[1].Job)
+	require.Equal(t, run.StepFailed, got.Steps[1].Status)
+	require.Empty(t, got.Steps[2].Job)
 
-	_, err := remote.GetJob(context.TODO(), testCl, run.SetupJobName(1, tr.ID))
+	_, err := remote.GetJob(context.TODO(), testCl, run.StepJobName(2, tr.ID))
 	require.True(t, client.IgnoreNotFound(err) == nil && err != nil)
 }
 
@@ -222,22 +240,22 @@ func TestPollerLastSetupSuccess(t *testing.T) {
 	appCl := perftest.NewFakeClient(t)
 	testCl := perftest.NewFakeClient(t)
 	tr := &run.TestRun{
-		ID:            "tr-1",
-		Phase:         run.PhaseSetupRunning,
-		SetupRunIndex: 1,
-		ImageTag:      "tr-1",
-		APIServer:     "https://api.one.example.com:6443",
-		DeploySandbox: run.DeploySandbox{Job: run.DeployJobName("tr-1"), Status: run.StepSucceeded},
-		SetupRuns: []run.SetupRun{
-			{Users: 1, Default: 1, Username: "setup", Job: run.SetupJobName(0, "tr-1"), Status: run.StepSucceeded},
-			{Users: 2, Default: 2, Username: "cupcake", Job: run.SetupJobName(1, "tr-1"), Status: run.StepRunning},
+		ID:        "tr-1",
+		Phase:     run.PhaseRunning,
+		StepIndex: 2,
+		ImageTag:  "tr-1",
+		APIServer: "https://api.one.example.com:6443",
+		Steps: []run.Step{
+			{Kind: run.StepDeploySandbox, Job: run.StepJobName(0, "tr-1"), Status: run.StepSucceeded},
+			{Kind: run.StepSetup, Users: 1, Default: 1, Username: "setup", Job: run.StepJobName(1, "tr-1"), Status: run.StepSucceeded},
+			{Kind: run.StepSetup, Users: 2, Default: 2, Username: "cupcake", Job: run.StepJobName(2, "tr-1"), Status: run.StepRunning},
 		},
 	}
 	seedRun(t, appCl, tr)
-	require.NoError(t, testCl.Create(context.TODO(), remote.SetupJob(tr, 1)))
-	setJobCondition(t, testCl, run.SetupJobName(1, tr.ID), batchv1.JobComplete)
+	require.NoError(t, testCl.Create(context.TODO(), mustStepJob(t, tr, 2)))
+	setJobCondition(t, testCl, run.StepJobName(2, tr.ID), batchv1.JobComplete)
 	require.NoError(t, testCl.Create(context.TODO(), &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: run.ResultsCMName(1), Namespace: run.TestNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: run.ResultsCMName(2), Namespace: run.TestNamespace},
 		Data:       map[string]string{run.ResultsCSVKey: "Item,Value\nUsers,2\n"},
 	}))
 	p := newPoller(t, appCl, testCl)
@@ -249,7 +267,8 @@ func TestPollerLastSetupSuccess(t *testing.T) {
 	got, cm, err := run.Get(context.TODO(), appCl, appNS, tr.ID)
 	require.NoError(t, err)
 	require.Equal(t, run.PhaseSucceeded, got.Phase)
-	require.Equal(t, "Item,Value\nUsers,2\n", cm.Data[run.ResultsDataKey(1)])
+	require.Equal(t, run.StepSucceeded, got.Steps[2].Status)
+	require.Equal(t, "Item,Value\nUsers,2\n", cm.Data[run.ResultsDataKey(2)])
 }
 
 func TestPollerCopyCSVOnSetupSuccess(t *testing.T) {
@@ -257,22 +276,22 @@ func TestPollerCopyCSVOnSetupSuccess(t *testing.T) {
 	appCl := perftest.NewFakeClient(t)
 	testCl := perftest.NewFakeClient(t)
 	tr := &run.TestRun{
-		ID:            "tr-1",
-		Phase:         run.PhaseSetupRunning,
-		SetupRunIndex: 0,
-		ImageTag:      "tr-1",
-		APIServer:     "https://api.one.example.com:6443",
-		DeploySandbox: run.DeploySandbox{Status: run.StepSucceeded},
-		SetupRuns: []run.SetupRun{
-			{Users: 1, Default: 1, Username: "setup", Job: run.SetupJobName(0, "tr-1"), Status: run.StepRunning},
-			{Users: 2, Default: 2, Username: "cupcake"},
+		ID:        "tr-1",
+		Phase:     run.PhaseRunning,
+		StepIndex: 1,
+		ImageTag:  "tr-1",
+		APIServer: "https://api.one.example.com:6443",
+		Steps: []run.Step{
+			{Kind: run.StepDeploySandbox, Status: run.StepSucceeded},
+			{Kind: run.StepSetup, Users: 1, Default: 1, Username: "setup", Job: run.StepJobName(1, "tr-1"), Status: run.StepRunning},
+			{Kind: run.StepSetup, Users: 2, Default: 2, Username: "cupcake"},
 		},
 	}
 	seedRun(t, appCl, tr)
-	require.NoError(t, testCl.Create(context.TODO(), remote.SetupJob(tr, 0)))
-	setJobCondition(t, testCl, run.SetupJobName(0, tr.ID), batchv1.JobComplete)
+	require.NoError(t, testCl.Create(context.TODO(), mustStepJob(t, tr, 1)))
+	setJobCondition(t, testCl, run.StepJobName(1, tr.ID), batchv1.JobComplete)
 	require.NoError(t, testCl.Create(context.TODO(), &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: run.ResultsCMName(0), Namespace: run.TestNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: run.ResultsCMName(1), Namespace: run.TestNamespace},
 		Data:       map[string]string{run.ResultsCSVKey: "a,b\n"},
 	}))
 	p := newPoller(t, appCl, testCl)
@@ -283,10 +302,10 @@ func TestPollerCopyCSVOnSetupSuccess(t *testing.T) {
 	// then
 	got, cm, err := run.Get(context.TODO(), appCl, appNS, tr.ID)
 	require.NoError(t, err)
-	require.Equal(t, "a,b\n", cm.Data[run.ResultsDataKey(0)])
-	require.Equal(t, run.PhaseSetupRunning, got.Phase)
-	require.Equal(t, 1, got.SetupRunIndex)
-	require.Equal(t, run.SetupJobName(1, tr.ID), got.SetupRuns[1].Job)
+	require.Equal(t, "a,b\n", cm.Data[run.ResultsDataKey(1)])
+	require.Equal(t, run.PhaseRunning, got.Phase)
+	require.Equal(t, 2, got.StepIndex)
+	require.Equal(t, run.StepJobName(2, tr.ID), got.Steps[2].Job)
 }
 
 func TestPollerTeardownWithoutCSVFailed(t *testing.T) {
@@ -294,9 +313,9 @@ func TestPollerTeardownWithoutCSVFailed(t *testing.T) {
 	appCl := perftest.NewFakeClient(t)
 	tr := &run.TestRun{
 		ID:        "tr-1",
-		Phase:     run.PhaseSetupRunning,
+		Phase:     run.PhaseRunning,
 		APIServer: "https://api.one.example.com:6443",
-		SetupRuns: []run.SetupRun{{Users: 1, Default: 1, Username: "setup"}},
+		Steps:     run.Pipeline([]run.Step{{Users: 1, Default: 1, Username: "setup"}}),
 	}
 	require.NoError(t, run.Create(context.TODO(), appCl, appNS, tr, []byte("kube")))
 	require.NoError(t, appCl.Delete(context.TODO(), &corev1.Secret{
@@ -318,17 +337,19 @@ func TestPollerSetupSuccessWithoutResultsFailed(t *testing.T) {
 	appCl := perftest.NewFakeClient(t)
 	testCl := perftest.NewFakeClient(t)
 	tr := &run.TestRun{
-		ID:            "tr-1",
-		Phase:         run.PhaseSetupRunning,
-		SetupRunIndex: 0,
-		ImageTag:      "tr-1",
-		APIServer:     "https://api.one.example.com:6443",
-		DeploySandbox: run.DeploySandbox{Status: run.StepSucceeded},
-		SetupRuns:     []run.SetupRun{{Users: 1, Default: 1, Username: "setup", Job: run.SetupJobName(0, "tr-1"), Status: run.StepRunning}},
+		ID:        "tr-1",
+		Phase:     run.PhaseRunning,
+		StepIndex: 1,
+		ImageTag:  "tr-1",
+		APIServer: "https://api.one.example.com:6443",
+		Steps: []run.Step{
+			{Kind: run.StepDeploySandbox, Status: run.StepSucceeded},
+			{Kind: run.StepSetup, Users: 1, Default: 1, Username: "setup", Job: run.StepJobName(1, "tr-1"), Status: run.StepRunning},
+		},
 	}
 	seedRun(t, appCl, tr)
-	require.NoError(t, testCl.Create(context.TODO(), remote.SetupJob(tr, 0)))
-	setJobCondition(t, testCl, run.SetupJobName(0, tr.ID), batchv1.JobComplete)
+	require.NoError(t, testCl.Create(context.TODO(), mustStepJob(t, tr, 1)))
+	setJobCondition(t, testCl, run.StepJobName(1, tr.ID), batchv1.JobComplete)
 	p := newPoller(t, appCl, testCl)
 
 	// when

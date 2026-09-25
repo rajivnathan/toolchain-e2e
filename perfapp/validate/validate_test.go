@@ -57,7 +57,7 @@ func TestSubmitSuccess(t *testing.T) {
 	// given
 	in := Input{
 		Kubeconfig: fakeKubeconfig(),
-		SetupRuns: []run.SetupRun{
+		Steps: []run.Step{
 			{Name: "1user", Users: 1, Default: 1, Username: "setup"},
 			{Name: "2k", Users: 2000, Default: 2000, Username: "cupcake"},
 		},
@@ -69,7 +69,7 @@ func TestSubmitSuccess(t *testing.T) {
 	// then
 	require.NoError(t, err)
 	require.Equal(t, "https://api.example.com:6443", got.APIServer)
-	require.Len(t, got.SetupRuns, 2)
+	require.Len(t, got.Steps, 2)
 	require.Empty(t, got.TemplateName)
 }
 
@@ -77,7 +77,7 @@ func TestBadKubeconfig(t *testing.T) {
 	// given
 	in := Input{
 		Kubeconfig: []byte("not-a-kubeconfig"),
-		SetupRuns:  []run.SetupRun{{Users: 1, Default: 1, Username: "setup"}},
+		Steps:      []run.Step{{Users: 1, Default: 1, Username: "setup"}},
 	}
 
 	// when
@@ -91,7 +91,7 @@ func TestSARDeny(t *testing.T) {
 	// given
 	in := Input{
 		Kubeconfig: fakeKubeconfig(),
-		SetupRuns:  []run.SetupRun{{Users: 1, Default: 1, Username: "setup"}},
+		Steps:      []run.Step{{Users: 1, Default: 1, Username: "setup"}},
 	}
 
 	// when
@@ -118,7 +118,7 @@ func TestDuplicateUsername(t *testing.T) {
 	// given
 	in := Input{
 		Kubeconfig: fakeKubeconfig(),
-		SetupRuns: []run.SetupRun{
+		Steps: []run.Step{
 			{Users: 1, Default: 1, Username: "setup"},
 			{Users: 2, Default: 2, Username: "setup"},
 		},
@@ -135,7 +135,7 @@ func TestTransformUsernameReject(t *testing.T) {
 	// given
 	in := Input{
 		Kubeconfig: fakeKubeconfig(),
-		SetupRuns:  []run.SetupRun{{Users: 1, Default: 1, Username: "openshiftuser"}},
+		Steps:      []run.Step{{Users: 1, Default: 1, Username: "openshiftuser"}},
 	}
 
 	// when
@@ -149,7 +149,7 @@ func TestCustomGreaterThanUsers(t *testing.T) {
 	// given
 	in := Input{
 		Kubeconfig: fakeKubeconfig(),
-		SetupRuns:  []run.SetupRun{{Users: 1, Default: 1, Custom: 2, Username: "setup"}},
+		Steps:      []run.Step{{Users: 1, Default: 1, Custom: 2, Username: "setup"}},
 	}
 
 	// when
@@ -163,7 +163,7 @@ func TestMissingTemplateWhenCustom(t *testing.T) {
 	// given
 	in := Input{
 		Kubeconfig: fakeKubeconfig(),
-		SetupRuns:  []run.SetupRun{{Users: 2, Default: 0, Custom: 2, Username: "setup"}},
+		Steps:      []run.Step{{Users: 2, Default: 0, Custom: 2, Username: "setup"}},
 	}
 
 	// when
@@ -177,7 +177,7 @@ func TestNonTemplateYAML(t *testing.T) {
 	// given
 	in := Input{
 		Kubeconfig: fakeKubeconfig(),
-		SetupRuns:  []run.SetupRun{{Users: 2, Default: 0, Custom: 2, Username: "setup"}},
+		Steps:      []run.Step{{Users: 2, Default: 0, Custom: 2, Username: "setup"}},
 		Template:   []byte("kind: ConfigMap\napiVersion: v1\nmetadata:\n  name: x\n"),
 	}
 
@@ -192,7 +192,7 @@ func TestAllCustomZeroWithoutTemplate(t *testing.T) {
 	// given
 	in := Input{
 		Kubeconfig: fakeKubeconfig(),
-		SetupRuns:  []run.SetupRun{{Users: 1, Default: 1, Custom: 0, Username: "setup"}},
+		Steps:      []run.Step{{Users: 1, Default: 1, Custom: 0, Username: "setup"}},
 	}
 
 	// when
@@ -207,7 +207,7 @@ func TestCustomWithValidTemplate(t *testing.T) {
 	// given
 	in := Input{
 		Kubeconfig:   fakeKubeconfig(),
-		SetupRuns:    []run.SetupRun{{Users: 2, Default: 0, Custom: 2, Username: "setup"}},
+		Steps:        []run.Step{{Users: 2, Default: 0, Custom: 2, Username: "setup"}},
 		Template:     []byte(validTemplate),
 		TemplateName: "onboarding.yaml",
 	}
@@ -224,7 +224,7 @@ func TestInvalidWorkload(t *testing.T) {
 	// given
 	in := Input{
 		Kubeconfig: fakeKubeconfig(),
-		SetupRuns:  []run.SetupRun{{Users: 1, Default: 1, Username: "setup"}},
+		Steps:      []run.Step{{Users: 1, Default: 1, Username: "setup"}},
 		Workloads:  []string{"not-a-pair"},
 	}
 
