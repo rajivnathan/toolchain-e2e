@@ -68,7 +68,7 @@ Use this before the first real Test Run (after phase 0 is on `master`):
 5. Run a Job with that image, SA `setup-runner` + cluster-admin, args `deploy-sandbox`. Confirm `make dev-deploy-latest` and ToolchainStatus Ready.
 6. Submit a 1-user Test Run from the UI against that cluster. Confirm setup Job args include `--in-cluster-metrics` and `--results-configmap=setup-run-results-0`, and that the CSV appears on the Test Run ConfigMap.
 
-## Local run (no proxy)
+## Local development
 
 ```
 go run ./perfapp --listen 127.0.0.1:8080 --namespace <your-ns>

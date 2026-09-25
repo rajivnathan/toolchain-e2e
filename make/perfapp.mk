@@ -14,7 +14,7 @@ perfapp-build:
 	$(Q)CGO_ENABLED=0 go build -o $(OUT_DIR)/bin/perfapp ./perfapp
 
 .PHONY: perfapp-image
-## Build the perfapp image tagged with the git SHA (quay.io/$(QUAY_NAMESPACE)/perfapp)
+## Build the perfapp image tagged with the git SHA (quay.io/$(QUAY_NAMESPACE)/perfapp:commit)
 perfapp-image:
 	$(call require-quay-namespace)
 	@echo "building $(PERFAPP_IMAGE) with podman..."
@@ -25,9 +25,3 @@ perfapp-image:
 perfapp-deploy:
 	$(call require-quay-namespace)
 	oc kustomize deploy/onboarding-perfapp | sed 's|image: quay.io/QUAY_NAMESPACE/perfapp:GIT_SHA|image: $(PERFAPP_IMAGE)|' | oc apply -f -
-
-.PHONY: perf-job-image
-## Build the test-cluster job image locally (not published to Quay)
-perf-job-image:
-	@echo "building perf-job:local with podman..."
-	podman build --platform $(IMAGE_PLATFORM) -t perf-job:local -f build/perf-job/Dockerfile .
